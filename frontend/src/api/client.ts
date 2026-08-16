@@ -1,4 +1,11 @@
-import type { Homework, NewHomework, PendingHomework, Student } from "./types";
+import type {
+  Assignment,
+  Homework,
+  NewHomework,
+  Student,
+  StudentDiary,
+  StudentRef,
+} from "./types";
 
 /** FastAPI answers with `detail` as either a plain string or a list of
  * per-field errors. Flatten both here so no caller has to know. */
@@ -34,10 +41,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function fetchPendingHomework(student: Student): Promise<PendingHomework> {
-  return request("/api/students/homework", {
+export function fetchDiary(student: Student): Promise<StudentDiary> {
+  return request("/api/students/diary", {
     method: "POST",
     body: JSON.stringify(student),
+  });
+}
+
+export function handIn(homeworkId: number, who: StudentRef): Promise<Assignment> {
+  return request(`/api/homework/${homeworkId}/submission`, {
+    method: "POST",
+    body: JSON.stringify(who),
+  });
+}
+
+export function takeBack(homeworkId: number, who: StudentRef): Promise<Assignment> {
+  return request(`/api/homework/${homeworkId}/submission`, {
+    method: "DELETE",
+    body: JSON.stringify(who),
   });
 }
 

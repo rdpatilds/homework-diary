@@ -1,11 +1,22 @@
-export type Student = {
-  studentName: string;
-  rollNo: string;
+/** Enough to say whose submission this is. */
+export type StudentRef = {
   className: string;
   section: string;
+  rollNo: string;
 };
 
-export type Homework = {
+export type Student = StudentRef & {
+  studentName: string;
+};
+
+/** Mirrors the server's discriminated union. A done assignment always carries
+ * its time and an open one never does. */
+export type AssignmentStatus =
+  | { state: "open" }
+  | { state: "missed" }
+  | { state: "done"; submittedAt: string };
+
+export type Assignment = {
   id: number;
   title: string;
   subject: string;
@@ -14,13 +25,17 @@ export type Homework = {
   section: string;
   dueAt: string;
   assignedBy: string;
+  status: AssignmentStatus;
 };
 
-export type PendingHomework = {
+export type StudentDiary = {
   student: Student;
   asOf: string;
-  items: Homework[];
+  assignments: Assignment[];
 };
+
+/** The teacher surfaces have no student, so no status. */
+export type Homework = Omit<Assignment, "status">;
 
 export type NewHomework = {
   title: string;

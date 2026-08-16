@@ -1,4 +1,4 @@
-export type Urgency = "today" | "soon" | "later";
+export type Urgency = "late" | "today" | "soon" | "later";
 
 export type Countdown = {
   /** Large numeral shown on the spine. */
@@ -11,24 +11,24 @@ export type Countdown = {
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 
-/** Everything about a deadline is derived from one number: the gap. No stored
- * flags to keep in sync. */
+/** Everything about a deadline is derived from one number: the gap. Total over
+ * deadlines either side of now, so overdue work needs no second function. */
 export function countdown(dueAt: string, asOf: Date): Countdown {
   const gap = new Date(dueAt).getTime() - asOf.getTime();
-  if (gap < HOUR) {
-    const minutes = Math.max(1, Math.round(gap / 60_000));
-    return { value: String(minutes), unit: minutes === 1 ? "min" : "mins", urgency: "today" };
+  const size = Math.abs(gap);
+  const urgency: Urgency =
+    gap < 0 ? "late" : size < DAY ? "today" : size < 3 * DAY ? "soon" : "later";
+
+  if (size < HOUR) {
+    const minutes = Math.max(1, Math.round(size / 60_000));
+    return { value: String(minutes), unit: minutes === 1 ? "min" : "mins", urgency };
   }
-  if (gap < DAY) {
-    const hours = Math.round(gap / HOUR);
-    return { value: String(hours), unit: hours === 1 ? "hour" : "hours", urgency: "today" };
+  if (size < DAY) {
+    const hours = Math.round(size / HOUR);
+    return { value: String(hours), unit: hours === 1 ? "hour" : "hours", urgency };
   }
-  const days = Math.floor(gap / DAY);
-  return {
-    value: String(days),
-    unit: days === 1 ? "day" : "days",
-    urgency: days <= 2 ? "soon" : "later",
-  };
+  const days = Math.floor(size / DAY);
+  return { value: String(days), unit: days === 1 ? "day" : "days", urgency };
 }
 
 const WHEN = new Intl.DateTimeFormat(undefined, {

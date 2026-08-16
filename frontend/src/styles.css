@@ -152,6 +152,7 @@ h2 {
   color: var(--ink-soft);
 }
 
+.count.late .count-value,
 .count.today .count-value {
   color: var(--margin);
 }
@@ -161,10 +162,46 @@ h2 {
 .count.later .count-value {
   color: var(--ink-soft);
 }
+.count.done .count-value {
+  color: var(--chalk);
+}
+
+/* Each section of the diary gets a label only once there is more than one. */
+.ledger-heading {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 0.75rem;
+  padding-left: 7rem;
+}
+
+.ledger-heading.late {
+  color: var(--margin);
+}
+
+.ledger-heading.done {
+  color: var(--chalk);
+}
+
+.tally-late {
+  color: var(--margin);
+}
 
 .entry-body {
   border-left: 2px solid var(--margin);
   padding: 0.15rem 0 2rem 1.5rem;
+}
+
+.entry-body.settled {
+  border-left-color: var(--chalk);
+}
+
+.entry-body.settled .entry-title {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  color: var(--ink-soft);
 }
 
 .entry-title {
@@ -332,9 +369,22 @@ button:disabled {
   text-underline-offset: 4px;
 }
 
-.link:hover {
+.link:hover:not(:disabled) {
   color: var(--margin);
   background: none;
+}
+
+.link:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.entry-body .link {
+  margin-top: 0.75rem;
+}
+
+.entry-body.settled .link:hover {
+  color: var(--chalk);
 }
 
 .notice {
@@ -415,6 +465,9 @@ button:disabled {
   .entry {
     grid-template-columns: 1fr;
     gap: 0.4rem;
+  }
+  .ledger-heading {
+    padding-left: 1.5rem;
   }
   .count {
     text-align: left;
