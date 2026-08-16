@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 
 import { fetchDiary, handIn, takeBack } from "../api/client";
 import type { Assignment, Student, StudentDiary } from "../api/types";
+import { CurveField } from "../components/CurveField";
 import { Field } from "../components/Field";
 import { countdown, dueLabel } from "../deadline";
 
@@ -80,34 +81,80 @@ export default function StudentPage() {
 
   const busy = screen.kind === "loading";
   return (
-    <main className="sheet">
-      <div className="masthead">
-        <p className="eyebrow">Meridian School &middot; Homework Diary</p>
-        <h1>What's due?</h1>
-        <p className="identity">Fill in the cover and we'll open your diary.</p>
-      </div>
-      <form className="cover" onSubmit={open}>
-        <Field label="Name" value={details.studentName}
-          onChange={(studentName) => setDetails({ ...details, studentName })}
-          autoComplete="name" />
-        <Field label="Roll no." value={details.rollNo}
-          onChange={(rollNo) => setDetails({ ...details, rollNo })} inputMode="numeric" />
-        <Field label="Class" value={details.className}
-          onChange={(className) => setDetails({ ...details, className })} placeholder="8" />
-        <Field label="Section" value={details.section}
-          onChange={(section) => setDetails({ ...details, section })} placeholder="A" />
-        <div className="actions">
-          <button type="submit" disabled={busy}>
-            {busy ? "Opening" : "Open my diary"}
-          </button>
+    <section className="hero">
+      <CurveField tone="green" />
+      <div className="hero-inner split">
+        <div className="hero-copy">
+          <p className="badge">
+            No password needed <b>just your roll no.</b>
+          </p>
+          <h1>
+            What you still owe,
+            <br />
+            <em>and when.</em>
+          </h1>
+          <p className="lede">
+            Enter your details and we'll open your diary. Your <b>class</b> and{" "}
+            <b>section</b> decide what you see.
+          </p>
         </div>
-      </form>
-      {screen.kind === "identify" && screen.error ? (
-        <p className="notice" role="alert">
-          {screen.error}
-        </p>
-      ) : null}
-    </main>
+
+        <form className="panel cover" onSubmit={open}>
+          <div className="panel-head c6">
+            <h2>Open your diary</h2>
+            <p className="eyebrow">Student</p>
+          </div>
+          <Field label="Name" span={6} value={details.studentName}
+            onChange={(studentName) => setDetails({ ...details, studentName })}
+            autoComplete="name" placeholder="Priya Raman" />
+          <Field label="Roll no." span={6} value={details.rollNo}
+            onChange={(rollNo) => setDetails({ ...details, rollNo })}
+            inputMode="numeric" placeholder="24" />
+          <Field label="Class" value={details.className}
+            onChange={(className) => setDetails({ ...details, className })}
+            placeholder="8" />
+          <Field label="Section" value={details.section}
+            onChange={(section) => setDetails({ ...details, section })}
+            placeholder="A" />
+          <div className="actions">
+            <button type="submit" disabled={busy}>
+              {busy ? "Opening" : "Open my diary"}
+            </button>
+          </div>
+          {screen.kind === "identify" && screen.error ? (
+            <p className="notice c6" role="alert">
+              {screen.error}
+            </p>
+          ) : null}
+        </form>
+
+        {/* Last in source so a phone reaches the form before the sample. On a
+            wide screen the grid lifts it under the copy. */}
+        <Preview />
+      </div>
+    </section>
+  );
+}
+
+/** A still of what waits on the other side of the form. */
+function Preview() {
+  const rows = [
+    { subject: "Maths", title: "Algebra worksheet", when: "2 days late", tone: "missed" },
+    { subject: "Science", title: "Photosynthesis lab write-up", when: "2 days left", tone: "open" },
+    { subject: "English", title: "Letter to the editor", when: "handed in", tone: "done" },
+  ] as const;
+  return (
+    <div className="preview" aria-hidden="true">
+      {rows.map((row) => (
+        <div className="preview-row" key={row.title}>
+          <span>
+            <i className={`dot ${row.tone}`} />
+            <span className="title">{row.title}</span>
+          </span>
+          <span className="when">{row.when}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -125,11 +172,12 @@ function Diary({
   const missed = assignments.filter((a) => a.status.state === "missed");
   const todo = assignments.filter((a) => a.status.state === "open");
   const done = assignments.filter((a) => a.status.state === "done");
+  const owing = missed.length + todo.length;
 
-  const ledger = (items: Assignment[]) => (
-    <div className="ledger">
+  const cards = (items: Assignment[]) => (
+    <div className="cards">
       {items.map((item, index) => (
-        <Entry
+        <Card
           key={item.id}
           item={item}
           asOf={at}
@@ -142,69 +190,99 @@ function Diary({
   );
 
   return (
-    <main className="sheet">
-      <div className="masthead">
-        <p className="eyebrow">Meridian School &middot; Homework Diary</p>
-        <h1>
-          {todo.length + missed.length === 0 ? "You're all clear," : "Still to do,"}
-          <br />
-          {student.studentName}.
-        </h1>
-        <p className="identity">
-          <span>
-            Class {student.className}-{student.section}
-          </span>
-          <span>Roll {student.rollNo}</span>
-          <span>{todo.length} to do</span>
-          {missed.length > 0 ? <span className="tally-late">{missed.length} missed</span> : null}
-          {done.length > 0 ? <span>{done.length} handed in</span> : null}
-          <button type="button" className="link" onClick={onChangeStudent}>
-            Not you?
-          </button>
-        </p>
-      </div>
-
-      {screen.error ? (
-        <p className="notice" role="alert">
-          {screen.error}
-        </p>
-      ) : null}
-
-      {missed.length > 0 ? (
-        <section>
-          <p className="ledger-heading late">Past the deadline</p>
-          {ledger(missed)}
-        </section>
-      ) : null}
-
-      {todo.length > 0 ? (
-        <section>
-          {missed.length > 0 ? <p className="ledger-heading">Still to do</p> : null}
-          {ledger(todo)}
-        </section>
-      ) : null}
-
-      {todo.length === 0 && missed.length === 0 ? (
-        <div className="empty">
-          <h2>Nothing is due.</h2>
-          <p>
-            No open homework for class {student.className}-{student.section}. Check
-            back after your next lesson.
-          </p>
+    <>
+      <section className="hero">
+        <CurveField tone="green" />
+        <div className="hero-inner">
+          <div>
+            <p className={missed.length > 0 ? "badge alarm" : "badge"}>
+              Class {student.className}-{student.section} &middot; Roll {student.rollNo}{" "}
+              <b>{missed.length > 0 ? `${missed.length} missed` : "all on time"}</b>
+            </p>
+            <h1>
+              {owing === 0 ? "You're all clear," : "Still to do,"}
+              <br />
+              <em>{student.studentName}.</em>
+            </h1>
+            <ul className="tally">
+              <li>
+                <i className="dot open" />
+                {todo.length} to do
+              </li>
+              {missed.length > 0 ? (
+                <li>
+                  <i className="dot missed" />
+                  {missed.length} missed
+                </li>
+              ) : null}
+              {done.length > 0 ? (
+                <li>
+                  <i className="dot done" />
+                  {done.length} handed in
+                </li>
+              ) : null}
+              <li>
+                <button type="button" className="link" onClick={onChangeStudent}>
+                  Not you?
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
-      ) : null}
+      </section>
 
-      {done.length > 0 ? (
-        <section>
-          <p className="ledger-heading done">Handed in</p>
-          {ledger(done)}
-        </section>
-      ) : null}
-    </main>
+      <div className="board">
+        {screen.error ? (
+          <p className="notice" role="alert">
+            {screen.error}
+          </p>
+        ) : null}
+
+        {missed.length > 0 ? (
+          <section className="section">
+            <div className="section-head">
+              <h2>Past the deadline</h2>
+              <span className="rule" />
+            </div>
+            {cards(missed)}
+          </section>
+        ) : null}
+
+        {todo.length > 0 ? (
+          <section className="section">
+            <div className="section-head">
+              <h2>Still to do</h2>
+              <span className="rule" />
+            </div>
+            {cards(todo)}
+          </section>
+        ) : null}
+
+        {owing === 0 ? (
+          <div className="empty">
+            <h2>Nothing is due.</h2>
+            <p>
+              No open homework for class {student.className}-{student.section}. Check
+              back after your next lesson.
+            </p>
+          </div>
+        ) : null}
+
+        {done.length > 0 ? (
+          <section className="section">
+            <div className="section-head">
+              <h2>Handed in</h2>
+              <span className="rule" />
+            </div>
+            {cards(done)}
+          </section>
+        ) : null}
+      </div>
+    </>
   );
 }
 
-function Entry({
+function Card({
   item,
   asOf,
   index,
@@ -218,36 +296,31 @@ function Entry({
   onToggle: (item: Assignment) => void;
 }) {
   const left = countdown(item.dueAt, asOf);
-  const isDone = item.status.state === "done";
+  const state = item.status.state;
+  const isDone = state === "done";
+  const shell = isDone ? "card settled" : state === "missed" ? "card overdue" : "card";
   return (
-    <article className="entry" style={{ animationDelay: `${index * 60}ms` }}>
-      {isDone ? (
-        <p className="count done">
-          <span className="count-value" aria-hidden="true">
-            &#10003;
+    <article className={shell} style={{ animationDelay: `${index * 55}ms` }}>
+      <div className="card-top">
+        <span className="subject">
+          <i className={`dot ${state}`} />
+          {item.subject}
+        </span>
+        {isDone ? (
+          <span className="count done">handed in</span>
+        ) : (
+          <span className={`count ${left.urgency}`}>
+            <b>{left.value}</b> {left.unit} {state === "missed" ? "late" : "left"}
           </span>
-          <span className="count-unit">handed in</span>
-        </p>
-      ) : (
-        <p className={`count ${left.urgency}`}>
-          <span className="count-value">{left.value}</span>
-          <span className="count-unit">
-            {left.unit} {item.status.state === "missed" ? "late" : "left"}
-          </span>
-        </p>
-      )}
-      <div className={isDone ? "entry-body settled" : "entry-body"}>
-        <h2 className="entry-title">{item.title}</h2>
-        <p className="entry-meta">
-          {item.subject} &middot; due {dueLabel(item.dueAt)} &middot; {item.assignedBy}
-        </p>
-        {item.details && !isDone ? <p className="entry-details">{item.details}</p> : null}
-        <button
-          type="button"
-          className="link"
-          disabled={busy}
-          onClick={() => onToggle(item)}
-        >
+        )}
+      </div>
+      <h3>{item.title}</h3>
+      {item.details && !isDone ? <p>{item.details}</p> : null}
+      <p className="meta">
+        Due {dueLabel(item.dueAt)} &middot; {item.assignedBy}
+      </p>
+      <div className="card-foot">
+        <button type="button" className="link" disabled={busy} onClick={() => onToggle(item)}>
           {busy ? "Saving" : isDone ? "Undo" : "Mark as handed in"}
         </button>
       </div>
