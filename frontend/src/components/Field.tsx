@@ -8,26 +8,21 @@ type FieldProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  /** Columns to occupy on the six-column staff form. Ignored on narrow screens,
-   * where every field is full width. */
-  span?: 1 | 2 | 3 | 4 | 6;
+  /** Codes and times read as data, so they get the mono face. */
+  data?: boolean;
 };
-
-function classes(span: FieldProps["span"]): string {
-  return span ? `field c${span}` : "field";
-}
 
 export function Field({
   label,
   value,
   onChange,
-  span,
+  data,
   ...rest
 }: FieldProps & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
   const id = slug(label);
   return (
-    <div className={classes(span)}>
-      <label htmlFor={id}>{label}</label>
+    <label className={data ? "field data" : "field"} htmlFor={id}>
+      <span>{label}</span>
       <input
         id={id}
         value={value}
@@ -35,7 +30,7 @@ export function Field({
         onChange={(event) => onChange(event.target.value)}
         {...rest}
       />
-    </div>
+    </label>
   );
 }
 
@@ -43,20 +38,19 @@ export function TextField({
   label,
   value,
   onChange,
-  span,
   ...rest
-}: FieldProps &
+}: Omit<FieldProps, "data"> &
   Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
   const id = slug(label);
   return (
-    <div className={classes(span)}>
-      <label htmlFor={id}>{label}</label>
+    <label className="field" htmlFor={id}>
+      <span>{label}</span>
       <textarea
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         {...rest}
       />
-    </div>
+    </label>
   );
 }

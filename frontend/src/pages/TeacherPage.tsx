@@ -3,9 +3,8 @@ import type { FormEvent } from "react";
 
 import { createHomework, fetchClassHomework } from "../api/client";
 import type { Homework } from "../api/types";
-import { CurveField } from "../components/CurveField";
 import { Field, TextField } from "../components/Field";
-import { dueLabel, localInputToIso } from "../deadline";
+import { countdown, dueLabel, localInputToIso, tierOf } from "../deadline";
 
 type Status =
   | { kind: "idle" }
@@ -84,89 +83,134 @@ export default function TeacherPage() {
   const set = <K extends keyof Draft>(key: K) => (value: Draft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const open = roster.filter((h) => new Date(h.dueAt).getTime() > Date.now()).length;
+  const now = new Date();
+  const open = roster.filter((h) => new Date(h.dueAt).getTime() > now.getTime());
+  const closed = roster.length - open.length;
+  const soonest = open[open.length - 1];
+  const cohort = className && section ? `${className}-${section}` : null;
 
   return (
     <>
-      <section className="hero">
-        <CurveField tone="cyan" />
-        <div className="hero-inner">
-          <div>
-            <p className="badge">
-              Staff <b>{className && section ? `${className}-${section}` : "any class"}</b>
-            </p>
-            <h1>
-              Set the work,
-              <br />
-              <em>set the deadline.</em>
-            </h1>
-            <p className="lede">
-              It lands in <b>every student's diary</b> for that class the moment you
-              save it. They mark it handed in from their own page.
-            </p>
-          </div>
+      <main className="split">
+        <section className="copy">
+          <p className="crumbs">
+            <span className="lead">Staff</span>
+            <span>&middot;</span>
+            <span>{cohort ? `Class ${cohort}` : "No class yet"}</span>
+            <span>&middot;</span>
+            <span>{draft.subject.trim() || "Any subject"}</span>
+          </p>
 
-          <form className="panel cover wide" onSubmit={submit}>
-            <div className="panel-head c6">
-              <h2>New homework</h2>
-              <p className="eyebrow">Teacher</p>
-            </div>
-            <Field label="Title" span={6} value={draft.title} onChange={set("title")}
+          <h1>
+            Set the work,
+            <br />
+            <em>set the deadline.</em>
+          </h1>
+
+          <p className="lede">
+            It lands in <strong>every student's diary</strong> for that class the moment
+            you save it. They mark it handed in from their own page.
+          </p>
+          <p className="aside">One form. Not five separate reminders.</p>
+
+          <ul className="stats">
+            <li>
+              <span className="label">Still open</span>
+              <span className="value">{cohort ? open.length : "—"}</span>
+            </li>
+            <li>
+              <span className="label">Next due</span>
+              <span className="value warn">
+                {soonest ? countdown(soonest.dueAt, now).short : "—"}
+              </span>
+            </li>
+            <li>
+              <span className="label">Closed</span>
+              <span className="value">{cohort ? closed : "—"}</span>
+            </li>
+          </ul>
+        </section>
+
+        <form className="panel" onSubmit={submit}>
+          <div className="panel-head">
+            <h2>New homework</h2>
+            <span className="tag">Teacher</span>
+          </div>
+          <div className="form-body">
+            <Field label="Title" value={draft.title} onChange={set("title")}
               placeholder="Photosynthesis lab write-up" />
-            <Field label="Subject" span={3} value={draft.subject} onChange={set("subject")}
-              placeholder="Science" />
-            <Field label="Set by" span={3} value={draft.assignedBy}
-              onChange={set("assignedBy")} placeholder="Mrs Iyer" autoComplete="name" />
-            <Field label="Class" span={1} value={draft.className}
-              onChange={set("className")} placeholder="8" />
-            <Field label="Section" span={1} value={draft.section}
-              onChange={set("section")} placeholder="A" />
-            <Field label="Deadline" span={4} value={draft.dueAt} onChange={set("dueAt")}
-              type="datetime-local" min={nowForInput()} />
-            <TextField label="What to do" span={6} value={draft.details}
+
+            <div className="row-2">
+              <Field label="Subject" value={draft.subject} onChange={set("subject")}
+                placeholder="Science" />
+              <Field label="Set by" value={draft.assignedBy}
+                onChange={set("assignedBy")} placeholder="Mrs Iyer" autoComplete="name" />
+            </div>
+
+            <div className="row-when">
+              <Field label="Class" data value={draft.className}
+                onChange={set("className")} placeholder="8" />
+              <Field label="Section" data value={draft.section}
+                onChange={set("section")} placeholder="A" />
+              <Field label="Deadline" value={draft.dueAt} onChange={set("dueAt")}
+                type="datetime-local" min={nowForInput()} />
+            </div>
+
+            <TextField label="What to do" value={draft.details}
               onChange={set("details")} rows={3}
               placeholder="Draw the leaf cross-section and label the chloroplasts." />
-            <div className="actions">
-              <button type="submit" disabled={status.kind === "saving"}>
+
+            <div className="submit-row">
+              <button type="submit" className="primary" disabled={status.kind === "saving"}>
                 {status.kind === "saving" ? "Setting" : "Set homework"}
               </button>
+              <span className="hint">
+                Delivers to {cohort ? `class ${cohort}` : "no class yet"}
+              </span>
             </div>
+
             {status.kind === "saved" ? (
-              <p className="notice good c6" role="status">
-                Set. &ldquo;{status.title}&rdquo; is now in the diary for class{" "}
-                {className}-{section}.
+              <p className="toast good" role="status">
+                &ldquo;{status.title}&rdquo; is now in the diary for class {cohort}.
               </p>
             ) : null}
             {status.kind === "failed" ? (
-              <p className="notice c6" role="alert">
+              <p className="toast" role="alert">
                 {status.message}
               </p>
             ) : null}
-          </form>
-        </div>
-      </section>
+          </div>
+        </form>
+      </main>
 
       {roster.length > 0 ? (
         <div className="board">
-          <section className="section">
-            <div className="section-head">
-              <h2>
-                Class {className}-{section} &middot; {open} still open
-              </h2>
-              <span className="rule" />
+          <section className="panel">
+            <div className="panel-head">
+              <p className="strip">
+                Class {cohort} &middot; {open.length} still open
+              </p>
+              <p className="panel-note">
+                Newest first. Overdue items stay at the top of the student's diary.
+              </p>
             </div>
-            <ul className="roster">
+            <ul className="rows">
               {roster.map((item) => {
-                const past = new Date(item.dueAt).getTime() <= Date.now();
+                const left = countdown(item.dueAt, now);
+                const past = new Date(item.dueAt).getTime() <= now.getTime();
+                const tier = tierOf(past ? "missed" : "open", left.urgency);
                 return (
-                  <li key={item.id} className={past ? "past" : undefined}>
-                    <span className="subject">
-                      <i className={past ? "dot missed" : "dot open"} />
+                  <li key={item.id}>
+                    <span className="cell-subject">
+                      <i className={`dot ${tier}`} />
                       {item.subject}
                     </span>
-                    <strong>{item.title}</strong>
-                    <span className="when">
-                      {past ? "closed" : "due"} {dueLabel(item.dueAt)}
+                    <span className="cell-title">
+                      <span className="name">{item.title}</span>
+                    </span>
+                    <span className="cell-due">Due {dueLabel(item.dueAt)}</span>
+                    <span className={`chip ${tier}`}>
+                      {past ? "closed" : `${left.short} left`}
                     </span>
                   </li>
                 );

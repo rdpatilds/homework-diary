@@ -3,25 +3,30 @@ import { Link, Route, Routes, useLocation } from "react-router-dom";
 import StudentPage from "./pages/StudentPage";
 import TeacherPage from "./pages/TeacherPage";
 
+const TODAY = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+
 export default function App() {
   const onTeacherSide = useLocation().pathname.startsWith("/teacher");
   return (
-    <div className={onTeacherSide ? "shell teacher" : "shell"}>
+    <div className="shell">
       <header className="topbar">
         <Link to="/" className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          Meridian School
+          <span className="brand-name">Meridian School</span>
+          <span className="brand-tag">Homework Diary</span>
         </Link>
         <nav>
-          {onTeacherSide ? (
-            <Link className="pill-link" to="/">
-              Student view
-            </Link>
-          ) : (
-            <Link className="pill-link" to="/teacher">
-              Teacher view
-            </Link>
-          )}
+          <span className="stamp">
+            <i aria-hidden="true" />
+            {TODAY.format(new Date())}
+          </span>
+          <Link className="ghost-btn" to={onTeacherSide ? "/" : "/teacher"}>
+            {onTeacherSide ? "Student view" : "Teacher view"} &rarr;
+          </Link>
         </nav>
       </header>
 
@@ -32,7 +37,7 @@ export default function App() {
       </Routes>
 
       <footer className="footer">
-        <span>Homework diary</span>
+        <span>Homework Diary</span>
         <span>{onTeacherSide ? "Staff" : "Students"}</span>
       </footer>
     </div>

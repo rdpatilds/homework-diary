@@ -1,12 +1,22 @@
 export type Urgency = "late" | "today" | "soon" | "later";
 
 export type Countdown = {
-  /** Large numeral shown on the spine. */
   value: string;
-  /** Unit beneath it. */
   unit: string;
+  /** Compact form for a chip, such as "2d". */
+  short: string;
   urgency: Urgency;
 };
+
+/** The reference grades urgency into four tiers and colours every dot, chip and
+ * numeral from them. One mapping so nothing drifts. */
+export type Tier = "crit" | "high" | "med" | "low";
+
+export function tierOf(state: "open" | "missed" | "done", urgency: Urgency): Tier {
+  if (state === "done") return "low";
+  if (state === "missed" || urgency === "today") return "crit";
+  return urgency === "soon" ? "high" : "med";
+}
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -21,14 +31,17 @@ export function countdown(dueAt: string, asOf: Date): Countdown {
 
   if (size < HOUR) {
     const minutes = Math.max(1, Math.round(size / 60_000));
-    return { value: String(minutes), unit: minutes === 1 ? "min" : "mins", urgency };
+    const unit = minutes === 1 ? "min" : "mins";
+    return { value: String(minutes), unit, short: `${minutes}m`, urgency };
   }
   if (size < DAY) {
     const hours = Math.round(size / HOUR);
-    return { value: String(hours), unit: hours === 1 ? "hour" : "hours", urgency };
+    const unit = hours === 1 ? "hour" : "hours";
+    return { value: String(hours), unit, short: `${hours}h`, urgency };
   }
   const days = Math.floor(size / DAY);
-  return { value: String(days), unit: days === 1 ? "day" : "days", urgency };
+  const unit = days === 1 ? "day" : "days";
+  return { value: String(days), unit, short: `${days}d`, urgency };
 }
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
