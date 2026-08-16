@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -11,11 +11,13 @@ from .classroom import ClassSection
 from .config import settings
 from .db import get_session, init_schema
 from .schemas import (
+    AssignmentOut,
     HomeworkCreate,
     HomeworkOut,
-    PendingHomework,
     Student,
+    StudentDiary,
     StudentLookup,
+    StudentRef,
 )
 
 
@@ -45,13 +47,13 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/students/homework", response_model=PendingHomework)
-def pending_homework(
+@app.post("/api/students/diary", response_model=StudentDiary)
+def student_diary(
     lookup: StudentLookup, session: Session = Depends(get_session)
-) -> PendingHomework:
+) -> StudentDiary:
     as_of = datetime.now(timezone.utc)
-    rows = homework.pending_for(session, lookup.cohort(), as_of)
-    return PendingHomework(
+    assignments = homework.diary_for(session, lookup.student(), as_of)
+    return StudentDiary(
         student=Student(
             student_name=lookup.student_name,
             roll_no=lookup.roll_no,
@@ -59,15 +61,46 @@ def pending_homework(
             section=lookup.section,
         ),
         as_of=as_of,
-        items=[HomeworkOut.model_validate(row) for row in rows],
+        assignments=[AssignmentOut.of(a) for a in assignments],
     )
+
+
+@app.post("/api/homework/{homework_id}/submission", response_model=AssignmentOut)
+def hand_in(
+    homework_id: int, who: StudentRef, session: Session = Depends(get_session)
+) -> AssignmentOut:
+    as_of = datetime.now(timezone.utc)
+    result = homework.hand_in(session, who.student(), homework_id, as_of)
+    if result is None:
+        raise HTTPException(404, "No such homework for that class")
+    return AssignmentOut.of(result)
+
+
+@app.delete("/api/homework/{homework_id}/submission", response_model=AssignmentOut)
+def take_back(
+    homework_id: int, who: StudentRef, session: Session = Depends(get_session)
+) -> AssignmentOut:
+    as_of = datetime.now(timezone.utc)
+    result = homework.take_back(session, who.student(), homework_id, as_of)
+    if result is None:
+        raise HTTPException(404, "No such homework for that class")
+    return AssignmentOut.of(result)
 
 
 @app.post("/api/homework", response_model=HomeworkOut, status_code=201)
 def set_homework(
     payload: HomeworkCreate, session: Session = Depends(get_session)
 ) -> HomeworkOut:
-    return HomeworkOut.model_validate(homework.create(session, payload))
+    row = homework.create(
+        session,
+        cohort=payload.cohort(),
+        title=payload.title,
+        subject=payload.subject,
+        details=payload.details,
+        assigned_by=payload.assigned_by,
+        due_at=payload.due_at,
+    )
+    return HomeworkOut.model_validate(row)
 
 
 @app.get("/api/homework", response_model=list[HomeworkOut])

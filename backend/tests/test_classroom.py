@@ -1,6 +1,6 @@
 import pytest
 
-from app.classroom import ClassSection
+from app.classroom import ClassSection, StudentKey
 
 
 @pytest.mark.parametrize(
@@ -23,3 +23,28 @@ def test_blank_parts_are_rejected(raw_class: str, raw_section: str):
 
 def test_cohorts_with_different_sections_differ():
     assert ClassSection.parse("8", "A") != ClassSection.parse("8", "B")
+
+
+@pytest.mark.parametrize("raw_roll", ["24", " 24 ", "24  "])
+def test_a_student_is_the_same_however_the_roll_is_typed(raw_roll: str):
+    assert StudentKey.parse("8", "a", raw_roll) == StudentKey.parse("8", "A", "24")
+
+
+def test_letters_in_a_roll_are_normalised():
+    assert StudentKey.parse("8", "A", "b12").roll_no == "B12"
+
+
+def test_the_same_roll_in_another_cohort_is_another_student():
+    assert StudentKey.parse("8", "A", "24") != StudentKey.parse("8", "B", "24")
+
+
+@pytest.mark.parametrize("raw_roll", ["", "   "])
+def test_a_blank_roll_is_rejected(raw_roll: str):
+    with pytest.raises(ValueError):
+        StudentKey.parse("8", "A", raw_roll)
+
+
+def test_leading_zeros_are_a_different_student():
+    """Deliberate. Merging 07 into 7 would let one student see another's
+    submissions if a school ever used both."""
+    assert StudentKey.parse("8", "A", "07") != StudentKey.parse("8", "A", "7")

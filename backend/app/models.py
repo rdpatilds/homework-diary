@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -25,4 +34,24 @@ class Homework(Base):
 
     __table_args__ = (
         Index("ix_homework_cohort_due", "class_name", "section", "due_at"),
+    )
+
+
+class Submission(Base):
+    """One row means one student handed one piece of homework in. Absence means
+    they have not. There is no status column to fall out of step."""
+
+    __tablename__ = "submission"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    homework_id: Mapped[int] = mapped_column(
+        ForeignKey("homework.id", ondelete="CASCADE"), nullable=False
+    )
+    roll_no: Mapped[str] = mapped_column(String(20), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("homework_id", "roll_no", name="uq_submission_homework_roll"),
     )

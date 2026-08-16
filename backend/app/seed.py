@@ -1,4 +1,5 @@
-"""Fills an empty homework table with a week of realistic work. Safe to re-run:
+"""Fills an empty homework table with a week of realistic work, including one
+item already past its deadline so the missed state is visible. Safe to re-run:
 it does nothing once any homework exists."""
 
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,7 @@ from .db import SessionLocal, init_schema
 from .models import Homework
 
 SAMPLES = [
+    ("Algebra worksheet", "Maths", "Both sides, show your working.", "8", "A", -2, "Mr Banerjee"),
     ("Photosynthesis lab write-up", "Science", "Draw the leaf cross-section, label the chloroplasts, and write up what changed in the starch test.", "8", "A", 2, "Mrs Iyer"),
     ("Chapter 6, sums 1-20", "Maths", "Show every step. Questions 17 to 20 are the stretch set.", "8", "A", 5, "Mr Banerjee"),
     ("Letter to the editor", "English", "250 words on the new library hours. Formal register.", "8", "A", 9, "Ms Fernandes"),

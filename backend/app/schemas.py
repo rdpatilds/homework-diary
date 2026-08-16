@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from .classroom import ClassSection
+from .classroom import ClassSection, StudentKey
+from .homework import Assignment, Done, Missed, Open
 
 
 class Payload(BaseModel):
@@ -33,11 +35,25 @@ class CohortFields(Payload):
         return ClassSection.parse(self.class_name, self.section)
 
 
-class StudentLookup(CohortFields):
-    student_name: str = Field(min_length=1, max_length=120)
+class StudentRef(CohortFields):
+    """Enough to identify whose submission this is. The teacher surfaces never
+    need it, so it stays off the homework payloads."""
+
     roll_no: str = Field(min_length=1, max_length=20)
 
-    @field_validator("student_name", "roll_no", mode="after")
+    @field_validator("roll_no", mode="after")
+    @classmethod
+    def _tidy_roll(cls, value: str) -> str:
+        return " ".join(value.split()).upper()
+
+    def student(self) -> StudentKey:
+        return StudentKey.parse(self.class_name, self.section, self.roll_no)
+
+
+class StudentLookup(StudentRef):
+    student_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("student_name", mode="after")
     @classmethod
     def _trim(cls, value: str) -> str:
         trimmed = " ".join(value.split())
@@ -80,7 +96,62 @@ class Student(Payload):
     section: str
 
 
-class PendingHomework(Payload):
+class OpenStatus(Payload):
+    state: Literal["open"]
+
+
+class MissedStatus(Payload):
+    state: Literal["missed"]
+
+
+class DoneStatus(Payload):
+    state: Literal["done"]
+    submitted_at: datetime
+
+
+AssignmentStatus = Annotated[
+    OpenStatus | MissedStatus | DoneStatus, Field(discriminator="state")
+]
+
+
+class AssignmentOut(Payload):
+    """Homework as it stands for one student. There is no `done` flag beside a
+    nullable timestamp, so the two cannot disagree."""
+
+    id: int
+    title: str
+    subject: str
+    details: str
+    class_name: str
+    section: str
+    due_at: datetime
+    assigned_by: str
+    status: AssignmentStatus
+
+    @classmethod
+    def of(cls, assignment: Assignment) -> "AssignmentOut":
+        match assignment.status:
+            case Done(submitted_at=at):
+                status: AssignmentStatus = DoneStatus(state="done", submitted_at=at)
+            case Missed():
+                status = MissedStatus(state="missed")
+            case Open():
+                status = OpenStatus(state="open")
+        row = assignment.homework
+        return cls(
+            id=row.id,
+            title=row.title,
+            subject=row.subject,
+            details=row.details,
+            class_name=row.class_name,
+            section=row.section,
+            due_at=row.due_at,
+            assigned_by=row.assigned_by,
+            status=status,
+        )
+
+
+class StudentDiary(Payload):
     student: Student
     as_of: datetime
-    items: list[HomeworkOut]
+    assignments: list[AssignmentOut]
