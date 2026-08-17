@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import StaffAccount
@@ -145,6 +145,17 @@ class SamePassword(Exception):
     """The new password is the old one."""
 
 
+class NotYourself(Exception):
+    """Refused because the target is the person asking. Disabling your own
+    account locks you out on the spot, and resetting your own password here
+    would dodge the current-password check that /account makes."""
+
+
+class LastAdmin(Exception):
+    """Refused because it would leave the school with no active administrator
+    and no way back in short of database access."""
+
+
 def change_password(
     session: Session, username: str, current: str, new: str
 ) -> StaffAccount:
@@ -163,33 +174,54 @@ def change_password(
     return row
 
 
-def reset_password(session: Session, username: str, new: str) -> StaffAccount | None:
-    """Admin path, for a teacher who has forgotten theirs. No current password,
-    because the admin cannot know it. Ends that teacher's sessions."""
+def reset_password(
+    session: Session, acting: Identity, username: str, new: str
+) -> StaffAccount | None:
+    """Admin path, for anyone who has forgotten theirs. No current password,
+    because the admin cannot know it. Ends that account's sessions."""
     row = find(session, username)
-    if row is None or row.role != Role.TEACHER.value:
+    if row is None:
         return None
+    if row.username == acting.username:
+        raise NotYourself
     row.password_hash = hash_password(new)
     session.commit()
     session.refresh(row)
     return row
 
 
-def teachers(session: Session) -> list[StaffAccount]:
-    stmt = (
-        select(StaffAccount)
-        .where(StaffAccount.role == Role.TEACHER.value)
-        .order_by(StaffAccount.username.asc())
+def everyone(session: Session) -> list[StaffAccount]:
+    """Admins first, then teachers, each alphabetical."""
+    stmt = select(StaffAccount).order_by(
+        StaffAccount.role.asc(), StaffAccount.username.asc()
     )
     return list(session.scalars(stmt))
 
 
+def active_admins(session: Session, excluding: str | None = None) -> int:
+    stmt = select(func.count()).select_from(StaffAccount).where(
+        StaffAccount.role == Role.ADMIN.value, StaffAccount.disabled_at.is_(None)
+    )
+    if excluding is not None:
+        stmt = stmt.where(StaffAccount.username != excluding)
+    return session.scalar(stmt) or 0
+
+
 def set_disabled(
-    session: Session, username: str, disabled: bool, now: datetime
+    session: Session,
+    acting: Identity,
+    username: str,
+    disabled: bool,
+    now: datetime,
 ) -> StaffAccount | None:
     row = find(session, username)
-    if row is None or row.role != Role.TEACHER.value:
+    if row is None:
         return None
+    if disabled:
+        if row.username == acting.username:
+            raise NotYourself
+        if row.role == Role.ADMIN.value and active_admins(session, row.username) == 0:
+            raise LastAdmin
     row.disabled_at = now if disabled else None
     session.commit()
     session.refresh(row)

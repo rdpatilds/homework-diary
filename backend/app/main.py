@@ -16,15 +16,15 @@ from .schemas import (
     ChangePassword,
     HomeworkCreate,
     HomeworkOut,
-    NewTeacher,
+    NewStaff,
     ResetPassword,
     SignIn,
+    StaffMember,
     StaffSession,
     Student,
     StudentDiary,
     StudentLookup,
     StudentRef,
-    TeacherOut,
 )
 
 COOKIE = "staff_session"
@@ -204,32 +204,39 @@ def change_password(
     return _as_session(accounts.identify(row))
 
 
-@app.post("/api/admin/teachers/{username}/password", response_model=TeacherOut)
-def reset_teacher_password(
+@app.post("/api/admin/staff/{username}/password", response_model=StaffMember)
+def reset_staff_password(
     username: str,
     payload: ResetPassword,
-    _: Identity = Depends(admin_only),
+    who: Identity = Depends(admin_only),
     session: Session = Depends(get_session),
-) -> TeacherOut:
-    row = accounts.reset_password(session, Username.parse(username), payload.password)
+) -> StaffMember:
+    try:
+        row = accounts.reset_password(
+            session, who, Username.parse(username), payload.password
+        )
+    except accounts.NotYourself:
+        raise HTTPException(
+            409, "Change your own password on the account page, where it asks for the current one."
+        )
     if row is None:
-        raise HTTPException(404, "No such teacher")
-    return TeacherOut.model_validate(row)
+        raise HTTPException(404, "No such account")
+    return StaffMember.model_validate(row)
 
 
-@app.get("/api/admin/teachers", response_model=list[TeacherOut])
-def list_teachers(
+@app.get("/api/admin/staff", response_model=list[StaffMember])
+def list_staff(
     _: Identity = Depends(admin_only), session: Session = Depends(get_session)
-) -> list[TeacherOut]:
-    return [TeacherOut.model_validate(t) for t in accounts.teachers(session)]
+) -> list[StaffMember]:
+    return [StaffMember.model_validate(s) for s in accounts.everyone(session)]
 
 
-@app.post("/api/admin/teachers", response_model=TeacherOut, status_code=201)
-def add_teacher(
-    payload: NewTeacher,
+@app.post("/api/admin/staff", response_model=StaffMember, status_code=201)
+def add_staff(
+    payload: NewStaff,
     _: Identity = Depends(admin_only),
     session: Session = Depends(get_session),
-) -> TeacherOut:
+) -> StaffMember:
     username = Username.parse(payload.username)
     if accounts.find(session, username) is not None:
         raise HTTPException(409, f"The username {username} is already taken")
@@ -238,24 +245,31 @@ def add_teacher(
         username=username,
         password=payload.password,
         display_name=payload.display_name,
-        role=Role.TEACHER,
+        role=Role(payload.role),
     )
-    return TeacherOut.model_validate(row)
+    return StaffMember.model_validate(row)
 
 
-@app.post("/api/admin/teachers/{username}/disabled", response_model=TeacherOut)
-def set_teacher_disabled(
+@app.post("/api/admin/staff/{username}/disabled", response_model=StaffMember)
+def set_staff_disabled(
     username: str,
     disabled: bool = Query(...),
-    _: Identity = Depends(admin_only),
+    who: Identity = Depends(admin_only),
     session: Session = Depends(get_session),
-) -> TeacherOut:
-    row = accounts.set_disabled(
-        session, Username.parse(username), disabled, datetime.now(timezone.utc)
-    )
+) -> StaffMember:
+    try:
+        row = accounts.set_disabled(
+            session, who, Username.parse(username), disabled, datetime.now(timezone.utc)
+        )
+    except accounts.NotYourself:
+        raise HTTPException(409, "You cannot disable your own account.")
+    except accounts.LastAdmin:
+        raise HTTPException(
+            409, "This is the only active administrator. Add another one first."
+        )
     if row is None:
-        raise HTTPException(404, "No such teacher")
-    return TeacherOut.model_validate(row)
+        raise HTTPException(404, "No such account")
+    return StaffMember.model_validate(row)
 
 
 @app.post("/api/students/diary", response_model=StudentDiary)

@@ -173,10 +173,11 @@ class StaffSession(Payload):
     role: Literal["admin", "teacher"] | None = None
 
 
-class NewTeacher(Payload):
+class NewStaff(Payload):
     username: str = Field(min_length=3, max_length=60)
     password: str = Field(min_length=8, max_length=200)
     display_name: str = Field(min_length=1, max_length=120)
+    role: Literal["admin", "teacher"] = "teacher"
 
     @field_validator("display_name", mode="after")
     @classmethod
@@ -187,9 +188,10 @@ class NewTeacher(Payload):
         return trimmed
 
 
-class TeacherOut(Payload):
+class StaffMember(Payload):
     username: str
     display_name: str
+    role: Literal["admin", "teacher"]
     created_at: datetime
     disabled_at: datetime | None
 

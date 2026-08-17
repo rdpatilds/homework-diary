@@ -13,6 +13,10 @@ from app.models import StaffAccount
 SECRET = "a-test-secret-at-least-24-chars-long"
 PREFIX = "pytest-"
 
+# Somebody other than any account under test, so the "not yourself" guard only
+# fires in the tests that mean to trigger it.
+ACTOR = Identity(f"{PREFIX}actor", "Actor", Role.ADMIN)
+
 
 @pytest.fixture()
 def session():
@@ -100,34 +104,103 @@ def test_an_unknown_username_does_not(session):
 def test_a_disabled_teacher_cannot_sign_in(session):
     make(session, "iyer", "leaf-cross-section")
 
-    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", True, now_utc())
 
     assert accounts.authenticate(session, f"{PREFIX}iyer", "leaf-cross-section") is None
 
 
 def test_re_enabling_lets_them_back_in(session):
     make(session, "iyer", "leaf-cross-section")
-    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", True, now_utc())
 
-    accounts.set_disabled(session, f"{PREFIX}iyer", False, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", False, now_utc())
 
     assert accounts.authenticate(session, f"{PREFIX}iyer", "leaf-cross-section")
 
 
-def test_only_teachers_are_listed(session):
+def test_admins_and_teachers_are_listed_together(session):
     make(session, "iyer", "password-one")
     make(session, "boss", "password-two", role=Role.ADMIN)
 
-    names = [t.username for t in accounts.teachers(session)]
+    names = [t.username for t in accounts.everyone(session)]
 
     assert f"{PREFIX}iyer" in names
-    assert f"{PREFIX}boss" not in names
+    assert f"{PREFIX}boss" in names
 
 
-def test_an_admin_cannot_be_disabled_through_the_teacher_path(session):
+def test_admins_come_before_teachers(session):
+    make(session, "iyer", "password-one")
     make(session, "boss", "password-two", role=Role.ADMIN)
 
-    assert accounts.set_disabled(session, f"{PREFIX}boss", True, now_utc()) is None
+    roles = [t.role for t in accounts.everyone(session) if t.username.startswith(PREFIX)]
+
+    assert roles == sorted(roles)
+    assert roles[0] == Role.ADMIN.value
+
+
+# ---------- guards against locking everyone out ----------
+
+
+def only_admin(session, name: str) -> StaffAccount:
+    """Clears the field so this account really is the last active admin."""
+    session.execute(delete(StaffAccount).where(StaffAccount.role == Role.ADMIN.value))
+    session.commit()
+    return make(session, name, "password-two", role=Role.ADMIN)
+
+
+def test_an_admin_can_be_disabled_when_another_remains(session):
+    only_admin(session, "boss")
+    make(session, "deputy", "password-three", role=Role.ADMIN)
+
+    row = accounts.set_disabled(session, ACTOR, f"{PREFIX}deputy", True, now_utc())
+
+    assert row is not None and row.disabled_at is not None
+
+
+def test_the_last_active_admin_cannot_be_disabled(session):
+    only_admin(session, "boss")
+
+    with pytest.raises(accounts.LastAdmin):
+        accounts.set_disabled(session, ACTOR, f"{PREFIX}boss", True, now_utc())
+
+    assert accounts.find(session, f"{PREFIX}boss").disabled_at is None
+
+
+def test_an_already_disabled_admin_does_not_count_as_active(session):
+    only_admin(session, "boss")
+    make(session, "deputy", "password-three", role=Role.ADMIN)
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}deputy", True, now_utc())
+
+    with pytest.raises(accounts.LastAdmin):
+        accounts.set_disabled(session, ACTOR, f"{PREFIX}boss", True, now_utc())
+
+
+def test_you_cannot_disable_yourself(session):
+    make(session, "boss", "password-two", role=Role.ADMIN)
+    make(session, "deputy", "password-three", role=Role.ADMIN)
+    self_acting = Identity(f"{PREFIX}boss", "Boss", Role.ADMIN)
+
+    with pytest.raises(accounts.NotYourself):
+        accounts.set_disabled(session, self_acting, f"{PREFIX}boss", True, now_utc())
+
+
+def test_you_may_still_re_enable_yourself(session):
+    """Re-enabling locks nobody out, so it needs no guard."""
+    make(session, "boss", "password-two", role=Role.ADMIN)
+    self_acting = Identity(f"{PREFIX}boss", "Boss", Role.ADMIN)
+
+    row = accounts.set_disabled(session, self_acting, f"{PREFIX}boss", False, now_utc())
+
+    assert row is not None and row.disabled_at is None
+
+
+def test_the_last_admin_rule_ignores_teachers(session):
+    only_admin(session, "boss")
+    make(session, "iyer", "password-one")
+
+    row = accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", True, now_utc())
+
+    assert row is not None and row.disabled_at is not None
 
 
 # ---------- changing a password ----------
@@ -163,7 +236,7 @@ def test_the_new_password_must_be_different(session):
 
 def test_a_disabled_account_cannot_change_its_password(session):
     make(session, "iyer", "leaf-cross-section")
-    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", True, now_utc())
 
     with pytest.raises(accounts.WrongPassword):
         accounts.change_password(
@@ -174,15 +247,32 @@ def test_a_disabled_account_cannot_change_its_password(session):
 def test_an_admin_can_reset_a_teacher_without_the_old_password(session):
     make(session, "iyer", "leaf-cross-section")
 
-    accounts.reset_password(session, f"{PREFIX}iyer", "issued-by-the-office")
+    accounts.reset_password(session, ACTOR, f"{PREFIX}iyer", "issued-by-the-office")
 
     assert accounts.authenticate(session, f"{PREFIX}iyer", "issued-by-the-office")
 
 
-def test_an_admin_cannot_be_reset_through_the_teacher_path(session):
+def test_an_admin_can_reset_another_admin(session):
     make(session, "boss", "password-two", role=Role.ADMIN)
 
-    assert accounts.reset_password(session, f"{PREFIX}boss", "new-password") is None
+    accounts.reset_password(session, ACTOR, f"{PREFIX}boss", "issued-by-the-office")
+
+    assert accounts.authenticate(session, f"{PREFIX}boss", "issued-by-the-office")
+
+
+def test_you_cannot_reset_your_own_password_this_way(session):
+    """That path skips the current-password check, so it stays on /account."""
+    make(session, "boss", "password-two", role=Role.ADMIN)
+    self_acting = Identity(f"{PREFIX}boss", "Boss", Role.ADMIN)
+
+    with pytest.raises(accounts.NotYourself):
+        accounts.reset_password(session, self_acting, f"{PREFIX}boss", "sneaky-change")
+
+    assert accounts.authenticate(session, f"{PREFIX}boss", "password-two")
+
+
+def test_resetting_an_unknown_account_returns_nothing(session):
+    assert accounts.reset_password(session, ACTOR, f"{PREFIX}ghost", "new-password") is None
 
 
 # ---------- session tokens ----------
@@ -258,7 +348,7 @@ def test_the_stamp_changes_when_an_admin_resets_it(session):
     row = make(session, "iyer", "leaf-cross-section")
     before = accounts.credential_stamp(row)
 
-    reset = accounts.reset_password(session, f"{PREFIX}iyer", "issued-by-the-office")
+    reset = accounts.reset_password(session, ACTOR, f"{PREFIX}iyer", "issued-by-the-office")
 
     assert reset is not None
     assert accounts.credential_stamp(reset) != before
@@ -267,8 +357,8 @@ def test_the_stamp_changes_when_an_admin_resets_it(session):
 def test_the_stamp_is_steady_while_the_password_is(session):
     row = make(session, "iyer", "leaf-cross-section")
 
-    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
-    accounts.set_disabled(session, f"{PREFIX}iyer", False, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", True, now_utc())
+    accounts.set_disabled(session, ACTOR, f"{PREFIX}iyer", False, now_utc())
 
     assert accounts.credential_stamp(
         accounts.find(session, f"{PREFIX}iyer")

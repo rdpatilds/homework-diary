@@ -44,7 +44,7 @@ python verify.py
 docker compose exec api python -m pytest tests -q
 ```
 
-`verify.py` runs 44 checks with a separate cookie jar per role and per device. It
+`verify.py` runs 63 checks with a separate cookie jar per role and per device. It
 proves the staff API is shut to anonymous callers, that an admin can create a
 teacher and a teacher cannot, that work is credited to whoever signed in, that
 students need no sign-in, that disabling a teacher ends the session they already
@@ -91,7 +91,7 @@ frontend/src
 | --- | --- | --- | --- |
 | See a class diary, hand work in | Yes | | |
 | Set homework, list a class | | Yes | Yes |
-| Create and disable teachers | | | Yes |
+| Create and disable accounts, including other admins | | | Yes |
 
 **The gate is on the API, not the page.** Hiding a React route protects nothing,
 so every staff route depends on a signed-in identity and answers 401 or 403 to
@@ -128,6 +128,22 @@ The admin who bootstrapped from `ADMIN_PASSWORD` should change it at `/account`
 on first sign-in. After that the value in `.env` is inert, because the bootstrap
 only runs when there is no admin at all. If that password is ever lost, delete
 the admin row and restart the API to bootstrap a fresh one.
+
+## Guards against locking yourself out
+
+An admin creates other admins, so the obvious next question is what stops the
+school losing every way in. Three rules, all enforced on the server:
+
+- **You cannot disable your own account.** It would take effect on your next
+  request, which is the one that reloads the page.
+- **You cannot disable the last active administrator.** Add another first. The
+  admin page says so in the panel header while only one is active, and greys the
+  button out rather than letting you find out by failing.
+- **You cannot reset your own password from the admin page.** That path skips
+  the current-password check, so it stays on `/account` where the check happens.
+  One admin resetting *another* is allowed, and ends that admin's sessions.
+
+Re-enabling is never blocked, because it locks nobody out.
 
 **Identities are normalised once.** `ClassSection.parse` and `StudentKey.parse`
 trim, collapse inner whitespace, and uppercase. A student typing `8` / `a` /

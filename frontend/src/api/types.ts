@@ -53,15 +53,17 @@ export type StaffSession =
   | { signedIn: false }
   | { signedIn: true; username: string; displayName: string; role: Role };
 
-export type Teacher = {
+export type StaffMember = {
   username: string;
   displayName: string;
+  role: Role;
   createdAt: string;
   disabledAt: string | null;
 };
 
-export type NewTeacher = {
+export type NewStaff = {
   username: string;
   password: string;
   displayName: string;
+  role: Role;
 };

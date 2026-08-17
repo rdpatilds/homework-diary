@@ -37,6 +37,9 @@ services:
     volumes:
       - ./backend/app:/srv/app
       - ./backend/tests:/srv/tests
+    # Pairs with the mounts above. The image's own CMD has no reload, so this
+    # stays a local convenience rather than something that ships.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status==200 else 1)\""]
       interval: 3s

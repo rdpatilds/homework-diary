@@ -1,26 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-
 import { Link } from "react-router-dom";
 
 import {
-  createTeacher,
-  fetchTeachers,
-  resetTeacherPassword,
-  setTeacherDisabled,
+  createStaff,
+  fetchStaff,
+  resetStaffPassword,
+  setStaffDisabled,
   signOut,
 } from "../api/client";
-import type { StaffSession, Teacher } from "../api/types";
+import type { Role, StaffMember, StaffSession } from "../api/types";
 import { Field } from "../components/Field";
 import { StaffGate } from "../components/StaffGate";
 
 type Status =
   | { kind: "idle" }
   | { kind: "saving" }
-  | { kind: "saved"; username: string }
+  | { kind: "saved"; username: string; role: Role }
   | { kind: "failed"; message: string };
 
-const BLANK = { username: "", password: "", displayName: "" };
+const BLANK = { username: "", password: "", displayName: "", role: "teacher" as Role };
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
@@ -42,9 +41,8 @@ export default function AdminPage() {
 function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
   const [draft, setDraft] = useState(BLANK);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  /** Which teacher's reset row is open, and what has been typed into it. */
   const [resetting, setResetting] = useState<{ username: string; password: string } | null>(
     null,
   );
@@ -52,9 +50,9 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
 
   const load = useCallback(async () => {
     try {
-      setTeachers(await fetchTeachers());
+      setStaff(await fetchStaff());
     } catch {
-      setTeachers([]);
+      setStaff([]);
     }
   }, []);
 
@@ -66,9 +64,9 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
     event.preventDefault();
     setStatus({ kind: "saving" });
     try {
-      const made = await createTeacher(draft);
-      setStatus({ kind: "saved", username: made.username });
-      setDraft(BLANK);
+      const made = await createStaff(draft);
+      setStatus({ kind: "saved", username: made.username, role: made.role });
+      setDraft({ ...BLANK, role: draft.role });
       await load();
     } catch (error) {
       setStatus({
@@ -79,15 +77,16 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
     }
   }
 
-  async function toggle(teacher: Teacher) {
-    setBusy(teacher.username);
+  async function toggle(member: StaffMember) {
+    setBusy(member.username);
+    setStatus({ kind: "idle" });
     try {
-      const updated = await setTeacherDisabled(
-        teacher.username,
-        teacher.disabledAt === null,
+      const updated = await setStaffDisabled(
+        member.username,
+        member.disabledAt === null,
       );
-      setTeachers((current) =>
-        current.map((t) => (t.username === updated.username ? updated : t)),
+      setStaff((current) =>
+        current.map((s) => (s.username === updated.username ? updated : s)),
       );
     } catch (error) {
       setStatus({
@@ -104,7 +103,7 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
     if (!resetting || resetting.password.length < 8) return;
     setBusy(resetting.username);
     try {
-      await resetTeacherPassword(resetting.username, resetting.password);
+      await resetStaffPassword(resetting.username, resetting.password);
       setReset({ username: resetting.username });
       setResetting(null);
     } catch (error) {
@@ -117,10 +116,13 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
     }
   }
 
-  const set = (key: keyof typeof BLANK) => (value: string) =>
+  const set = (key: "username" | "password" | "displayName") => (value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const active = teachers.filter((t) => t.disabledAt === null).length;
+  const admins = staff.filter((s) => s.role === "admin");
+  const activeAdmins = admins.filter((s) => s.disabledAt === null).length;
+  const teachers = staff.filter((s) => s.role === "teacher");
+  const disabled = staff.filter((s) => s.disabledAt !== null).length;
 
   return (
     <>
@@ -139,9 +141,9 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
           </h1>
 
           <p className="lede">
-            Create an account for each teacher who sets homework. They sign in
-            with these details, and whatever they set is{" "}
-            <strong>credited to their name</strong>.
+            Create an account for each teacher who sets homework, and for anyone who
+            needs to <strong>manage accounts themselves</strong>. Whatever a teacher
+            sets is credited to their name.
           </p>
           <p className="aside">
             Passwords are hashed before they are stored. Nobody can read them back,
@@ -150,26 +152,24 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
 
           <ul className="stats">
             <li>
-              <span className="label">Teachers</span>
-              <span className="value">{teachers.length}</span>
+              <span className="label">Admins</span>
+              <span className="value">{admins.length}</span>
             </li>
             <li>
-              <span className="label">Active</span>
-              <span className="value good">{active}</span>
+              <span className="label">Teachers</span>
+              <span className="value good">{teachers.length}</span>
             </li>
             <li>
               <span className="label">Disabled</span>
-              <span className={teachers.length - active > 0 ? "value bad" : "value"}>
-                {teachers.length - active}
-              </span>
+              <span className={disabled > 0 ? "value bad" : "value"}>{disabled}</span>
             </li>
           </ul>
         </section>
 
         <form className="panel" onSubmit={submit}>
           <div className="panel-head">
-            <h2>New teacher</h2>
-            <span style={{ display: "flex", gap: "8px" }}>
+            <h2>New account</h2>
+            <span className="row-actions">
               <Link className="link" to="/account">
                 My password
               </Link>
@@ -180,9 +180,25 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
             </span>
           </div>
           <div className="form-body">
+            <fieldset className="segments">
+              <legend>Role</legend>
+              {(["teacher", "admin"] as const).map((role) => (
+                <label key={role}>
+                  <input type="radio" name="role" value={role}
+                    checked={draft.role === role}
+                    onChange={() => setDraft((c) => ({ ...c, role }))} />
+                  <span>{role === "teacher" ? "Teacher" : "Administrator"}</span>
+                </label>
+              ))}
+            </fieldset>
+            <p className="segments-note">
+              {draft.role === "admin"
+                ? "Can create and disable accounts, and set homework."
+                : "Can set homework for any class."}
+            </p>
+
             <Field label="Full name" value={draft.displayName}
-              onChange={set("displayName")} placeholder="Mrs Iyer"
-              autoComplete="off" />
+              onChange={set("displayName")} placeholder="Mrs Iyer" autoComplete="off" />
             <Field label="Username" data value={draft.username}
               onChange={set("username")} placeholder="mrs.iyer" autoComplete="off" />
             <Field label="Password" value={draft.password} onChange={set("password")}
@@ -197,7 +213,7 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
 
             {status.kind === "saved" ? (
               <p className="toast good" role="status">
-                Created {status.username}. They can sign in on the teacher page now.
+                Created {status.username} as {status.role === "admin" ? "an administrator" : "a teacher"}.
               </p>
             ) : null}
             {status.kind === "failed" ? (
@@ -212,65 +228,80 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
       <div className="board">
         <section className="panel">
           <div className="panel-head">
-            <p className="strip">Teacher accounts &middot; {teachers.length}</p>
+            <p className="strip">Staff accounts &middot; {staff.length}</p>
             <p className="panel-note">
-              Disabling ends their session at once. It never deletes their homework.
+              {activeAdmins === 1
+                ? "Only one active administrator. Add another before disabling anyone."
+                : "Disabling ends their session at once. It never deletes their homework."}
             </p>
           </div>
-          {teachers.length === 0 ? (
+          {staff.length === 0 ? (
             <div className="blank">
-              <h3>No teachers yet.</h3>
-              <p>Create the first account with the form above.</p>
+              <h3>No accounts yet.</h3>
+              <p>Create the first one with the form above.</p>
             </div>
           ) : (
             <ul className="rows actionable">
-              {teachers.map((teacher) => {
-                const off = teacher.disabledAt !== null;
+              {staff.map((member) => {
+                const off = member.disabledAt !== null;
+                const isAdmin = member.role === "admin";
+                const isYou = member.username === who.username;
+                const lastAdmin = isAdmin && !off && activeAdmins === 1;
                 return (
-                  <li key={teacher.username}>
+                  <li key={member.username}>
                     <span className="cell-subject">
-                      <i className={off ? "dot crit" : "dot low"} />
-                      {off ? "disabled" : "active"}
+                      <i className={off ? "dot crit" : isAdmin ? "dot med" : "dot low"} />
+                      {isAdmin ? "admin" : "teacher"}
                     </span>
                     <span className="cell-title">
                       <span className={off ? "name settled" : "name"}>
-                        {teacher.displayName}
+                        {member.displayName}
+                        {isYou ? <em className="you"> you</em> : null}
                       </span>
-                      <p className="brief">{teacher.username}</p>
+                      <p className="brief">{member.username}</p>
                     </span>
                     <span className="cell-due">
-                      Added {WHEN.format(new Date(teacher.createdAt))}
+                      Added {WHEN.format(new Date(member.createdAt))}
                     </span>
-                    <span className={off ? "chip crit" : "chip low"}>
-                      {off ? "no access" : "can set work"}
+                    <span className={off ? "chip crit" : isAdmin ? "chip med" : "chip low"}>
+                      {off ? "no access" : isAdmin ? "manages accounts" : "can set work"}
                     </span>
                     <span className="row-actions">
+                      {isYou ? null : (
+                        <button type="button" className="link"
+                          disabled={busy === member.username}
+                          onClick={() =>
+                            setResetting(
+                              resetting?.username === member.username
+                                ? null
+                                : { username: member.username, password: "" },
+                            )
+                          }>
+                          {resetting?.username === member.username ? "Cancel" : "Reset"}
+                        </button>
+                      )}
                       <button type="button" className="link"
-                        disabled={busy === teacher.username}
-                        onClick={() =>
-                          setResetting(
-                            resetting?.username === teacher.username
-                              ? null
-                              : { username: teacher.username, password: "" },
-                          )
-                        }>
-                        {resetting?.username === teacher.username ? "Cancel" : "Reset"}
-                      </button>
-                      <button type="button" className="link"
-                        disabled={busy === teacher.username}
-                        onClick={() => void toggle(teacher)}>
-                        {busy === teacher.username ? "Saving" : off ? "Enable" : "Disable"}
+                        disabled={busy === member.username || isYou || lastAdmin}
+                        title={
+                          isYou
+                            ? "You cannot disable your own account"
+                            : lastAdmin
+                              ? "The only active administrator"
+                              : undefined
+                        }
+                        onClick={() => void toggle(member)}>
+                        {busy === member.username ? "Saving" : off ? "Enable" : "Disable"}
                       </button>
                     </span>
 
-                    {resetting?.username === teacher.username ? (
+                    {resetting?.username === member.username ? (
                       <form className="row-inline" onSubmit={submitReset}>
                         <input type="password" autoFocus minLength={8}
-                          placeholder={`New password for ${teacher.username}`}
+                          placeholder={`New password for ${member.username}`}
                           value={resetting.password}
                           onChange={(event) =>
                             setResetting({
-                              username: teacher.username,
+                              username: member.username,
                               password: event.target.value,
                             })
                           } />
@@ -284,9 +315,9 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
                       </form>
                     ) : null}
 
-                    {reset?.username === teacher.username ? (
+                    {reset?.username === member.username ? (
                       <p className="row-inline note" role="status">
-                        New password set for {teacher.username}. They have been signed
+                        New password set for {member.username}. They have been signed
                         out.
                       </p>
                     ) : null}

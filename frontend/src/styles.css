@@ -651,6 +651,80 @@ button.primary:disabled {
   flex: none;
 }
 
+/* Two mutually exclusive choices, so real radios with the input hidden rather
+   than buttons pretending to be one. */
+.segments {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.segments legend {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  padding: 0 0 7px;
+}
+
+.segments label {
+  flex: 1;
+  min-width: 0;
+}
+
+.segments input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.segments span {
+  display: block;
+  text-align: center;
+  background: var(--sunken);
+  border: 1px solid var(--edge-input);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.segments input:checked + span {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(0, 163, 224, 0.12);
+}
+
+.segments input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.segments-note {
+  margin: -6px 0 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.name .you {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-left: 8px;
+}
+
 /* An action that needs an input opens inside its own row rather than a dialog. */
 .row-inline {
   grid-column: 1 / -1;

@@ -116,7 +116,7 @@ check("anonymous cannot set homework", status == 401, f"{status} {body}")
 status, body = anon("GET", f"/api/homework?className={CLASS}&section={SECTION}")
 check("anonymous cannot list a class", status == 401, f"{status} {body}")
 
-status, body = anon("GET", "/api/admin/teachers")
+status, body = anon("GET", "/api/admin/staff")
 check("anonymous cannot list teachers", status == 401, f"{status} {body}")
 
 status, body = anon("POST", "/api/staff/session", {"username": ADMIN_USER, "password": "wrong"})
@@ -132,25 +132,29 @@ status, body = admin("POST", "/api/staff/session", {"username": ADMIN_USER, "pas
 check("the admin can sign in",
       status == 200 and body.get("role") == "admin", f"{status} {body}")
 
-admin("POST", f"/api/admin/teachers/{TEACHER_USER}/disabled?disabled=false")
-status, body = admin("POST", "/api/admin/teachers", {
+admin("POST", f"/api/admin/staff/{TEACHER_USER}/disabled?disabled=false")
+status, body = admin("POST", "/api/admin/staff", {
     "username": TEACHER_USER, "password": TEACHER_PASS, "displayName": "Verify Teacher",
 })
 check("the admin can create a teacher", status in (201, 409), f"{status} {body}")
 
-status, body = admin("POST", "/api/admin/teachers", {
+status, body = admin("POST", "/api/admin/staff", {
     "username": TEACHER_USER, "password": TEACHER_PASS, "displayName": "Verify Teacher",
 })
 check("the same username cannot be taken twice", status == 409, f"{status} {body}")
 
-status, body = admin("POST", "/api/admin/teachers", {
+status, body = admin("POST", "/api/admin/staff", {
     "username": "shorty", "password": "short", "displayName": "Too Short",
 })
 check("a short password is refused", status == 422, f"{status} {body}")
 
-status, body = admin("GET", "/api/admin/teachers")
+status, body = admin("GET", "/api/admin/staff")
 listed = [t["username"] for t in body] if status == 200 else []
 check("the new teacher is listed", TEACHER_USER in listed, f"{status} {body}")
+
+# A previous run may have died with this account's password mid-change, so put
+# it back to a known one rather than assuming. The run converges either way.
+admin("POST", f"/api/admin/staff/{TEACHER_USER}/password", {"password": TEACHER_PASS})
 
 print("\n-- the teacher signs in and sets work --")
 
@@ -158,7 +162,7 @@ status, body = teacher("POST", "/api/staff/session", {"username": TEACHER_USER, 
 check("the teacher can sign in",
       status == 200 and body.get("role") == "teacher", f"{status} {body}")
 
-status, body = teacher("GET", "/api/admin/teachers")
+status, body = teacher("GET", "/api/admin/staff")
 check("a teacher cannot manage teachers", status == 403, f"{status} {body}")
 
 status, created = teacher("POST", "/api/homework", homework_body)
@@ -212,7 +216,7 @@ check("a blank roll number is refused", status == 422, f"{status} {body}")
 
 print("\n-- disabling a teacher ends their access --")
 
-status, body = admin("POST", f"/api/admin/teachers/{TEACHER_USER}/disabled?disabled=true")
+status, body = admin("POST", f"/api/admin/staff/{TEACHER_USER}/disabled?disabled=true")
 check("the admin can disable a teacher",
       status == 200 and body.get("disabledAt") is not None, f"{status} {body}")
 
@@ -224,7 +228,7 @@ status, body = blocked("POST", "/api/staff/session",
                        {"username": TEACHER_USER, "password": TEACHER_PASS})
 check("they cannot sign in again", status == 401, f"{status} {body}")
 
-status, body = admin("POST", f"/api/admin/teachers/{TEACHER_USER}/disabled?disabled=false")
+status, body = admin("POST", f"/api/admin/staff/{TEACHER_USER}/disabled?disabled=false")
 check("re-enabling them works", status == 200 and body.get("disabledAt") is None,
       f"{status} {body}")
 
@@ -276,7 +280,7 @@ check("the new password does", status == 200, f"{status} {body}")
 
 print("\n-- an admin resets a forgotten password --")
 
-status, body = admin("POST", f"/api/admin/teachers/{TEACHER_USER}/password",
+status, body = admin("POST", f"/api/admin/staff/{TEACHER_USER}/password",
                      {"password": TEACHER_PASS})
 check("the admin can reset a teacher", status == 200, f"{status} {body}")
 
@@ -287,14 +291,121 @@ status, body = stale("POST", "/api/staff/session",
                      {"username": TEACHER_USER, "password": TEACHER_PASS})
 check("they sign in with what the admin issued", status == 200, f"{status} {body}")
 
-status, body = desk("POST", f"/api/admin/teachers/{TEACHER_USER}/password",
+status, body = desk("POST", f"/api/admin/staff/{TEACHER_USER}/password",
                     {"password": "teacher-should-not-reach-this"})
 check("a teacher cannot reset anyone", status in (401, 403), f"{status} {body}")
 
-status, body = admin("POST", f"/api/admin/teachers/{ADMIN_USER}/password",
-                     {"password": "admins-are-not-resettable-here"})
-check("an admin cannot be reset through the teacher path", status == 404,
+print("\n-- an admin adds another admin --")
+
+DEPUTY = "verify-deputy"
+DEPUTY_PASS = "verify-deputy-password"
+SECOND = "verify-deputy-two"
+SECOND_PASS = "verify-deputy-two-password"
+deputy = Caller("deputy")
+second = Caller("deputy-two")
+
+for name, password, label in (
+    (DEPUTY, DEPUTY_PASS, "Verify Deputy"),
+    (SECOND, SECOND_PASS, "Verify Deputy Two"),
+):
+    admin("POST", f"/api/admin/staff/{name}/disabled?disabled=false")
+    admin("POST", "/api/admin/staff", {
+        "username": name, "password": password,
+        "displayName": label, "role": "admin",
+    })
+    # Converge the password whatever an earlier run left behind.
+    admin("POST", f"/api/admin/staff/{name}/password", {"password": password})
+
+status, body = admin("GET", "/api/admin/staff")
+made = {s["username"]: s["role"] for s in body} if status == 200 else {}
+check("an admin can create another admin", made.get(DEPUTY) == "admin",
       f"{status} {body}")
+
+status, body = admin("GET", "/api/admin/staff")
+roles = {s["username"]: s["role"] for s in body} if status == 200 else {}
+check("the new account is listed as an admin", roles.get(DEPUTY) == "admin",
+      f"{status} {body}")
+check("teachers are listed alongside admins", roles.get(TEACHER_USER) == "teacher",
+      f"{roles}")
+
+status, body = deputy("POST", "/api/staff/session",
+                      {"username": DEPUTY, "password": DEPUTY_PASS})
+check("the new admin can sign in", status == 200 and body.get("role") == "admin",
+      f"{status} {body}")
+
+status, body = deputy("GET", "/api/admin/staff")
+check("the new admin can manage staff", status == 200, f"{status} {body}")
+
+status, body = deputy("POST", "/api/admin/staff", {
+    "username": "verify-third", "password": "verify-third-password",
+    "displayName": "Verify Third", "role": "teacher",
+})
+check("the new admin can create accounts", status in (201, 409), f"{status} {body}")
+
+status, body = teacher("POST", "/api/admin/staff", {
+    "username": "verify-sneak", "password": "verify-sneak-password",
+    "displayName": "Sneak", "role": "admin",
+})
+check("a teacher cannot make themselves an admin", status in (401, 403),
+      f"{status} {body}")
+
+print("\n-- the lockout guards --")
+
+status, body = admin("POST", f"/api/admin/staff/{ADMIN_USER}/disabled?disabled=true")
+check("an admin cannot disable their own account", status == 409, f"{status} {body}")
+
+status, body = admin("POST", f"/api/admin/staff/{ADMIN_USER}/password",
+                     {"password": "trying-to-skip-the-current-one"})
+check("an admin cannot reset their own password here", status == 409,
+      f"{status} {body}")
+
+status, body = admin("POST", f"/api/admin/staff/{DEPUTY}/disabled?disabled=true")
+check("one admin can disable another while others remain", status == 200,
+      f"{status} {body}")
+
+status, body = deputy("GET", "/api/admin/staff")
+check("the disabled admin loses access at once", status == 401, f"{status} {body}")
+
+status, body = admin("POST", f"/api/admin/staff/{DEPUTY}/disabled?disabled=false")
+check("and can be re-enabled", status == 200, f"{status} {body}")
+
+status, body = deputy("POST", "/api/staff/session",
+                      {"username": DEPUTY, "password": DEPUTY_PASS})
+check("the re-enabled admin signs back in", status == 200, f"{status} {body}")
+
+# Deliberately between two throwaway admins. The bootstrap admin's password is
+# never touched, so a run that dies part way cannot lock the operator out.
+status, body = second("POST", "/api/staff/session",
+                      {"username": SECOND, "password": SECOND_PASS})
+check("the second admin can sign in", status == 200, f"{status} {body}")
+
+ISSUED = "issued-by-the-other-admin"
+status, body = second("POST", f"/api/admin/staff/{DEPUTY}/password", {"password": ISSUED})
+check("one admin may reset another's password", status == 200, f"{status} {body}")
+
+status, body = deputy("GET", "/api/admin/staff")
+check("that ended the reset admin's session", status == 401, f"{status} {body}")
+
+deputy = Caller("deputy-again")
+status, body = deputy("POST", "/api/staff/session",
+                      {"username": DEPUTY, "password": ISSUED})
+check("they sign in with the issued password", status == 200, f"{status} {body}")
+
+status, body = deputy("POST", "/api/staff/password", {
+    "currentPassword": ISSUED, "newPassword": DEPUTY_PASS,
+})
+check("and can set it back themselves", status == 200, f"{status} {body}")
+
+status, body = admin("GET", "/api/admin/staff")
+check("the bootstrap admin was never touched", status == 200, f"{status} {body}")
+
+for name in (DEPUTY, SECOND):
+    admin("POST", f"/api/admin/staff/{name}/disabled?disabled=true")
+status, body = admin("GET", "/api/admin/staff")
+parked = {s["username"]: s["disabledAt"] for s in body} if status == 200 else {}
+check("tidy the throwaway admins away",
+      parked.get(DEPUTY) is not None and parked.get(SECOND) is not None,
+      f"{status} {parked}")
 
 print("\n-- signing out --")
 teacher = stale

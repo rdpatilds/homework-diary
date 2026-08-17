@@ -2,12 +2,12 @@ import type {
   Assignment,
   Homework,
   NewHomework,
-  NewTeacher,
+  NewStaff,
+  StaffMember,
   StaffSession,
   Student,
   StudentDiary,
   StudentRef,
-  Teacher,
 } from "./types";
 
 /** FastAPI answers with `detail` as either a plain string or a list of
@@ -98,14 +98,14 @@ export function signOut(): Promise<StaffSession> {
   return request("/api/staff/session", { method: "DELETE" });
 }
 
-export function fetchTeachers(): Promise<Teacher[]> {
-  return request("/api/admin/teachers");
+export function fetchStaff(): Promise<StaffMember[]> {
+  return request("/api/admin/staff");
 }
 
-export function createTeacher(teacher: NewTeacher): Promise<Teacher> {
-  return request("/api/admin/teachers", {
+export function createStaff(member: NewStaff): Promise<StaffMember> {
+  return request("/api/admin/staff", {
     method: "POST",
-    body: JSON.stringify(teacher),
+    body: JSON.stringify(member),
   });
 }
 
@@ -119,22 +119,22 @@ export function changePassword(
   });
 }
 
-export function resetTeacherPassword(
+export function resetStaffPassword(
   username: string,
   password: string,
-): Promise<Teacher> {
-  return request(`/api/admin/teachers/${encodeURIComponent(username)}/password`, {
+): Promise<StaffMember> {
+  return request(`/api/admin/staff/${encodeURIComponent(username)}/password`, {
     method: "POST",
     body: JSON.stringify({ password }),
   });
 }
 
-export function setTeacherDisabled(
+export function setStaffDisabled(
   username: string,
   disabled: boolean,
-): Promise<Teacher> {
+): Promise<StaffMember> {
   return request(
-    `/api/admin/teachers/${encodeURIComponent(username)}/disabled?disabled=${disabled}`,
+    `/api/admin/staff/${encodeURIComponent(username)}/disabled?disabled=${disabled}`,
     { method: "POST" },
   );
 }
