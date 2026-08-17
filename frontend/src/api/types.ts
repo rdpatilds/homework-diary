@@ -37,12 +37,31 @@ export type StudentDiary = {
 /** The teacher surfaces have no student, so no status. */
 export type Homework = Omit<Assignment, "status">;
 
+/** No assignedBy. The server credits whoever is signed in. */
 export type NewHomework = {
   title: string;
   subject: string;
   details: string;
   className: string;
   section: string;
-  assignedBy: string;
   dueAt: string;
+};
+
+export type Role = "admin" | "teacher";
+
+export type StaffSession =
+  | { signedIn: false }
+  | { signedIn: true; username: string; displayName: string; role: Role };
+
+export type Teacher = {
+  username: string;
+  displayName: string;
+  createdAt: string;
+  disabledAt: string | null;
+};
+
+export type NewTeacher = {
+  username: string;
+  password: string;
+  displayName: string;
 };

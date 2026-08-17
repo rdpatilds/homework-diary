@@ -37,6 +37,25 @@ class Homework(Base):
     )
 
 
+class StaffAccount(Base):
+    """Admins and teachers alike. Role decides what they may do, and an absent
+    disabled_at is the only thing that makes an account active."""
+
+    __tablename__ = "staff_account"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Submission(Base):
     """One row means one student handed one piece of homework in. Absence means
     they have not. There is no status column to fall out of step."""

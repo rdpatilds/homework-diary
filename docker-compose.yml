@@ -20,6 +20,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://schoolapp:schoolapp@db:5432/schoolapp
       CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      # From .env, which is gitignored. Compose refuses to start without them.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env, see .env.example}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env, see .env.example}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
     depends_on:
       db:
         condition: service_healthy

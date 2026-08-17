@@ -1,5 +1,6 @@
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 
+import AdminPage from "./pages/AdminPage";
 import StudentPage from "./pages/StudentPage";
 import TeacherPage from "./pages/TeacherPage";
 
@@ -10,7 +11,8 @@ const TODAY = new Intl.DateTimeFormat(undefined, {
 });
 
 export default function App() {
-  const onTeacherSide = useLocation().pathname.startsWith("/teacher");
+  const path = useLocation().pathname;
+  const onStaffSide = path.startsWith("/teacher") || path.startsWith("/admin");
   return (
     <div className="shell">
       <header className="topbar">
@@ -24,8 +26,13 @@ export default function App() {
             <i aria-hidden="true" />
             {TODAY.format(new Date())}
           </span>
-          <Link className="ghost-btn" to={onTeacherSide ? "/" : "/teacher"}>
-            {onTeacherSide ? "Student view" : "Teacher view"} &rarr;
+          {path.startsWith("/teacher") ? (
+            <Link className="ghost-btn" to="/admin">
+              Admin &rarr;
+            </Link>
+          ) : null}
+          <Link className="ghost-btn" to={onStaffSide ? "/" : "/teacher"}>
+            {onStaffSide ? "Student view" : "Teacher view"} &rarr;
           </Link>
         </nav>
       </header>
@@ -33,12 +40,13 @@ export default function App() {
       <Routes>
         <Route path="/" element={<StudentPage />} />
         <Route path="/teacher" element={<TeacherPage />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route path="*" element={<StudentPage />} />
       </Routes>
 
       <footer className="footer">
         <span>Homework Diary</span>
-        <span>{onTeacherSide ? "Staff" : "Students"}</span>
+        <span>{onStaffSide ? "Staff" : "Students"}</span>
       </footer>
     </div>
   );

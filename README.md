@@ -12,16 +12,24 @@ deadline.
 ## Run it
 
 ```
+cp .env.example .env      # then put real values in it
 docker compose up -d --build
 docker compose exec api python -m app.seed   # optional sample homework
 ```
 
-| Surface | URL |
-| --- | --- |
-| Student landing page | http://localhost:8080 |
-| Teacher page | http://localhost:8080/teacher |
-| API docs | http://localhost:8000/docs |
-| Postgres | localhost:55432, user/password/db all `schoolapp` |
+Compose refuses to start without `SESSION_SECRET` and `ADMIN_PASSWORD`, so
+there is no way to bring this up with a default password. On the first run
+against an empty database the API creates one administrator from those values
+and logs the username. It never touches that account again, so changing
+`ADMIN_PASSWORD` later does nothing.
+
+| Surface | URL | Sign-in |
+| --- | --- | --- |
+| Student landing page | http://localhost:8080 | None |
+| Teacher page | http://localhost:8080/teacher | Any staff account |
+| Admin page | http://localhost:8080/admin | Administrator only |
+| API docs | http://localhost:8000/docs | |
+| Postgres | localhost:55432 | user/password/db all `schoolapp` |
 
 The seed is safe to re-run. It does nothing once any homework exists.
 
@@ -35,12 +43,15 @@ python verify.py
 docker compose exec api python -m pytest tests -q
 ```
 
-`verify.py` proves a teacher can set homework, that a past deadline is refused,
-that a student finds their work despite messy casing, that handing in and taking
-back move it between states and are both idempotent, and that one student's
-submission leaves their classmate's diary alone. Pass `http://localhost:8080` to
-run the same checks through nginx. The pytest suite covers the diary query and
-the submission rules against the real database.
+`verify.py` runs 31 checks with three separate cookie jars, one per role. It
+proves the staff API is shut to anonymous callers, that an admin can create a
+teacher and a teacher cannot, that work is credited to whoever signed in, that
+students need no sign-in, and that disabling a teacher ends the session they
+already hold. Pass `http://localhost:8080` to run the same checks through nginx.
+
+The pytest suite runs against its own database, `schoolapp_test`, created on
+first use. It deletes rows freely, including every admin, so it must never point
+at the working database. `backend/tests/conftest.py` enforces that.
 
 ## Develop
 
@@ -59,15 +70,44 @@ Typecheck with `npm run typecheck`.
 ```
 backend/app
   classroom.py   ClassSection and StudentKey, and the one normalisation rule
+  accounts.py    staff accounts, password hashing, roles
+  staff.py       signed session tokens and the sign-in throttle
   schemas.py     request and response models, all validation
   homework.py    the diary query, the submission rules, Assignment
-  models.py      the two tables
+  models.py      the three tables
   main.py        routes, thin
 frontend/src
   api/           fetch wrapper and DTO types
   deadline.ts    countdown and timezone conversion, pure
-  pages/         StudentPage, TeacherPage
+  components/    StaffGate wraps both staff pages
+  pages/         StudentPage, TeacherPage, AdminPage
 ```
+
+## Who can do what
+
+| | Students | Teachers | Admin |
+| --- | --- | --- | --- |
+| See a class diary, hand work in | Yes | | |
+| Set homework, list a class | | Yes | Yes |
+| Create and disable teachers | | | Yes |
+
+**The gate is on the API, not the page.** Hiding a React route protects nothing,
+so every staff route depends on a signed-in identity and answers 401 or 403 to
+anyone else. `verify.py` calls each one anonymously to prove it.
+
+**Passwords are hashed with scrypt**, a fresh 16-byte salt each, stored as
+`scrypt$N$r$p$salt$hash`. Nobody can read a password back, including the admin
+who set it. An unknown username still pays the cost of a hash, so absence is not
+timeable.
+
+**A session is a signed cookie**, HttpOnly and SameSite=Strict, carrying only a
+username, a role and an expiry. Nothing is stored server side, so rotating
+`SESSION_SECRET` signs everyone out at once. Every request re-reads the account
+behind the cookie, which is why disabling a teacher ends the session they are
+already holding rather than waiting for it to expire.
+
+**Homework is credited to whoever is signed in.** `assignedBy` is not a field a
+client can send, so nobody can put another teacher's name on their work.
 
 **Identities are normalised once.** `ClassSection.parse` and `StudentKey.parse`
 trim, collapse inner whitespace, and uppercase. A student typing `8` / `a` /
@@ -104,10 +144,16 @@ datetime posted directly to the API is read as UTC.
 
 ## Known limits
 
-- No authentication, and this now matters more than it did. Any roll number
-  opens that student's diary and can mark their work handed in. Anyone who
-  reaches `/teacher` can set homework. Add auth before this leaves the school
-  network.
+- Students still do not sign in. Any roll number opens that student's diary and
+  can mark their work handed in. That is deliberate for now, and it is the
+  remaining hole.
+- The sign-in throttle counts failures per IP in memory. It resets on restart
+  and does not span replicas, so it slows guessing rather than stopping it. Put
+  a real rate limit at the proxy before this faces the internet.
+- No password change or reset for teachers. An admin can disable an account and
+  create a replacement, which is the whole recovery story today.
+- `COOKIE_SECURE` is false by default so it works over plain HTTP locally. Set
+  it to true the moment this is behind TLS, or session cookies travel in clear.
 - No roster, so a roll number is whatever the student types. `07` and `7` are
   two different students on purpose, because merging them would let one student
   see another's submissions if a school ever used both. The fix is a roster the

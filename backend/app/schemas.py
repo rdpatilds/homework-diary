@@ -63,10 +63,12 @@ class StudentLookup(StudentRef):
 
 
 class HomeworkCreate(CohortFields):
+    """No assigned_by. Whoever is signed in owns the work, so a client cannot
+    put someone else's name on it."""
+
     title: str = Field(min_length=1, max_length=200)
     subject: str = Field(min_length=1, max_length=80)
     details: str = Field(default="", max_length=4000)
-    assigned_by: str = Field(min_length=1, max_length=120)
     due_at: datetime
 
     @field_validator("due_at", mode="after")
@@ -155,3 +157,38 @@ class StudentDiary(Payload):
     student: Student
     as_of: datetime
     assignments: list[AssignmentOut]
+
+
+class SignIn(Payload):
+    username: str = Field(min_length=1, max_length=60)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class StaffSession(Payload):
+    """What the browser is told about itself. Never carries the token."""
+
+    signed_in: bool
+    username: str | None = None
+    display_name: str | None = None
+    role: Literal["admin", "teacher"] | None = None
+
+
+class NewTeacher(Payload):
+    username: str = Field(min_length=3, max_length=60)
+    password: str = Field(min_length=8, max_length=200)
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name", mode="after")
+    @classmethod
+    def _trim_name(cls, value: str) -> str:
+        trimmed = " ".join(value.split())
+        if not trimmed:
+            raise ValueError("A name is required")
+        return trimmed
+
+
+class TeacherOut(Payload):
+    username: str
+    display_name: str
+    created_at: datetime
+    disabled_at: datetime | None

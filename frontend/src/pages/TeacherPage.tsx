@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { createHomework, fetchClassHomework } from "../api/client";
-import type { Homework } from "../api/types";
+import { createHomework, fetchClassHomework, signOut } from "../api/client";
+import type { Homework, StaffSession } from "../api/types";
 import { Field, TextField } from "../components/Field";
+import { StaffGate } from "../components/StaffGate";
 import { countdown, dueLabel, localInputToIso, tierOf } from "../deadline";
 
 type Status =
@@ -18,7 +19,6 @@ type Draft = {
   details: string;
   className: string;
   section: string;
-  assignedBy: string;
   dueAt: string;
 };
 
@@ -28,7 +28,6 @@ const BLANK: Draft = {
   details: "",
   className: "",
   section: "",
-  assignedBy: "",
   dueAt: "",
 };
 
@@ -39,6 +38,16 @@ function nowForInput(): string {
 }
 
 export default function TeacherPage() {
+  return (
+    <StaffGate
+      title="Set the work,"
+      blurb="set the deadline."
+      children={(who) => <Desk who={who} />}
+    />
+  );
+}
+
+function Desk({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
   const [draft, setDraft] = useState<Draft>(BLANK);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [roster, setRoster] = useState<Homework[]>([]);
@@ -70,7 +79,7 @@ export default function TeacherPage() {
         dueAt: localInputToIso(draft.dueAt),
       });
       setStatus({ kind: "saved", title: saved.title });
-      setDraft({ ...BLANK, className, section, assignedBy: draft.assignedBy });
+      setDraft({ ...BLANK, className, section });
       await loadRoster();
     } catch (error) {
       setStatus({
@@ -94,7 +103,7 @@ export default function TeacherPage() {
       <main className="split">
         <section className="copy">
           <p className="crumbs">
-            <span className="lead">Staff</span>
+            <span className="lead">{who.displayName}</span>
             <span>&middot;</span>
             <span>{cohort ? `Class ${cohort}` : "No class yet"}</span>
             <span>&middot;</span>
@@ -134,18 +143,17 @@ export default function TeacherPage() {
         <form className="panel" onSubmit={submit}>
           <div className="panel-head">
             <h2>New homework</h2>
-            <span className="tag">Teacher</span>
+            <button type="button" className="link"
+              onClick={() => void signOut().then(() => location.reload())}>
+              Sign out
+            </button>
           </div>
           <div className="form-body">
             <Field label="Title" value={draft.title} onChange={set("title")}
               placeholder="Photosynthesis lab write-up" />
 
-            <div className="row-2">
-              <Field label="Subject" value={draft.subject} onChange={set("subject")}
-                placeholder="Science" />
-              <Field label="Set by" value={draft.assignedBy}
-                onChange={set("assignedBy")} placeholder="Mrs Iyer" autoComplete="name" />
-            </div>
+            <Field label="Subject" value={draft.subject} onChange={set("subject")}
+              placeholder="Science" />
 
             <div className="row-when">
               <Field label="Class" data value={draft.className}
@@ -165,7 +173,8 @@ export default function TeacherPage() {
                 {status.kind === "saving" ? "Setting" : "Set homework"}
               </button>
               <span className="hint">
-                Delivers to {cohort ? `class ${cohort}` : "no class yet"}
+                Set by {who.displayName} &middot; delivers to{" "}
+                {cohort ? `class ${cohort}` : "no class yet"}
               </span>
             </div>
 

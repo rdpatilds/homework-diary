@@ -2,9 +2,12 @@ import type {
   Assignment,
   Homework,
   NewHomework,
+  NewTeacher,
+  StaffSession,
   Student,
   StudentDiary,
   StudentRef,
+  Teacher,
 } from "./types";
 
 /** FastAPI answers with `detail` as either a plain string or a list of
@@ -29,6 +32,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(path, {
       ...init,
+      // The staff session is an HttpOnly cookie, so nothing here handles a
+      // token. It just has to travel.
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch {
@@ -75,4 +81,40 @@ export function fetchClassHomework(
 ): Promise<Homework[]> {
   const query = new URLSearchParams({ className, section });
   return request(`/api/homework?${query}`);
+}
+
+export function fetchSession(): Promise<StaffSession> {
+  return request("/api/staff/session");
+}
+
+export function signIn(username: string, password: string): Promise<StaffSession> {
+  return request("/api/staff/session", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function signOut(): Promise<StaffSession> {
+  return request("/api/staff/session", { method: "DELETE" });
+}
+
+export function fetchTeachers(): Promise<Teacher[]> {
+  return request("/api/admin/teachers");
+}
+
+export function createTeacher(teacher: NewTeacher): Promise<Teacher> {
+  return request("/api/admin/teachers", {
+    method: "POST",
+    body: JSON.stringify(teacher),
+  });
+}
+
+export function setTeacherDisabled(
+  username: string,
+  disabled: boolean,
+): Promise<Teacher> {
+  return request(
+    `/api/admin/teachers/${encodeURIComponent(username)}/disabled?disabled=${disabled}`,
+    { method: "POST" },
+  );
 }
