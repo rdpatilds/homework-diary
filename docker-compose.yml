@@ -31,6 +31,12 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    # Python is interpreted, so mounting the source means an edit needs a
+    # restart at most, never an image rebuild. The image still carries a full
+    # copy, so this stays deployable with the mounts removed.
+    volumes:
+      - ./backend/app:/srv/app
+      - ./backend/tests:/srv/tests
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status==200 else 1)\""]
       interval: 3s

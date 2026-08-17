@@ -81,10 +81,10 @@ def test_a_malformed_hash_never_matches(junk: str):
 def test_the_right_password_signs_you_in(session):
     make(session, "iyer", "leaf-cross-section")
 
-    who = accounts.authenticate(session, f"{PREFIX}iyer", "leaf-cross-section")
+    row = accounts.authenticate(session, f"{PREFIX}iyer", "leaf-cross-section")
 
-    assert who is not None
-    assert who.role is Role.TEACHER
+    assert row is not None
+    assert accounts.identify(row).role is Role.TEACHER
 
 
 def test_the_wrong_password_does_not(session):
@@ -130,53 +130,158 @@ def test_an_admin_cannot_be_disabled_through_the_teacher_path(session):
     assert accounts.set_disabled(session, f"{PREFIX}boss", True, now_utc()) is None
 
 
+# ---------- changing a password ----------
+
+
+def test_changing_a_password_lets_the_new_one_in(session):
+    make(session, "iyer", "leaf-cross-section")
+
+    accounts.change_password(session, f"{PREFIX}iyer", "leaf-cross-section", "stomata-2026")
+
+    assert accounts.authenticate(session, f"{PREFIX}iyer", "stomata-2026")
+    assert accounts.authenticate(session, f"{PREFIX}iyer", "leaf-cross-section") is None
+
+
+def test_the_current_password_must_be_right(session):
+    row = make(session, "iyer", "leaf-cross-section")
+    before = row.password_hash
+
+    with pytest.raises(accounts.WrongPassword):
+        accounts.change_password(session, f"{PREFIX}iyer", "guess", "stomata-2026")
+
+    assert accounts.find(session, f"{PREFIX}iyer").password_hash == before
+
+
+def test_the_new_password_must_be_different(session):
+    make(session, "iyer", "leaf-cross-section")
+
+    with pytest.raises(accounts.SamePassword):
+        accounts.change_password(
+            session, f"{PREFIX}iyer", "leaf-cross-section", "leaf-cross-section"
+        )
+
+
+def test_a_disabled_account_cannot_change_its_password(session):
+    make(session, "iyer", "leaf-cross-section")
+    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
+
+    with pytest.raises(accounts.WrongPassword):
+        accounts.change_password(
+            session, f"{PREFIX}iyer", "leaf-cross-section", "stomata-2026"
+        )
+
+
+def test_an_admin_can_reset_a_teacher_without_the_old_password(session):
+    make(session, "iyer", "leaf-cross-section")
+
+    accounts.reset_password(session, f"{PREFIX}iyer", "issued-by-the-office")
+
+    assert accounts.authenticate(session, f"{PREFIX}iyer", "issued-by-the-office")
+
+
+def test_an_admin_cannot_be_reset_through_the_teacher_path(session):
+    make(session, "boss", "password-two", role=Role.ADMIN)
+
+    assert accounts.reset_password(session, f"{PREFIX}boss", "new-password") is None
+
+
 # ---------- session tokens ----------
 
 
 TEACHER = Identity("iyer", "Mrs Iyer", Role.TEACHER)
 ADMIN = Identity("boss", "Administrator", Role.ADMIN)
+STAMP = "abc123def456"
 
 
 def test_a_fresh_token_reads_back_as_the_same_person():
     now = now_utc()
 
-    claim = staff.read(staff.mint(TEACHER, SECRET, now, timedelta(hours=1)), SECRET, now)
+    claim = staff.read(
+        staff.mint(TEACHER, STAMP, SECRET, now, timedelta(hours=1)), SECRET, now
+    )
 
     assert claim is not None
     assert claim.username == "iyer"
     assert claim.role is Role.TEACHER
+    assert claim.stamp == STAMP
 
 
 def test_the_role_survives_the_round_trip():
     now = now_utc()
 
-    claim = staff.read(staff.mint(ADMIN, SECRET, now, timedelta(hours=1)), SECRET, now)
+    claim = staff.read(
+        staff.mint(ADMIN, STAMP, SECRET, now, timedelta(hours=1)), SECRET, now
+    )
 
     assert claim is not None and claim.role is Role.ADMIN
 
 
 def test_an_expired_token_is_refused():
     now = now_utc()
-    token = staff.mint(TEACHER, SECRET, now, timedelta(hours=1))
+    token = staff.mint(TEACHER, STAMP, SECRET, now, timedelta(hours=1))
 
     assert staff.read(token, SECRET, now + timedelta(hours=2)) is None
 
 
 def test_a_token_signed_with_another_secret_is_refused():
     now = now_utc()
-    token = staff.mint(TEACHER, SECRET, now, timedelta(hours=1))
+    token = staff.mint(TEACHER, STAMP, SECRET, now, timedelta(hours=1))
 
     assert staff.read(token, SECRET + "x", now) is None
 
 
 def test_a_tampered_payload_is_refused():
     now = now_utc()
-    token = staff.mint(TEACHER, SECRET, now, timedelta(hours=1))
+    token = staff.mint(TEACHER, STAMP, SECRET, now, timedelta(hours=1))
     payload, signature = token.split(".")
-    forged = staff._b64(b"boss|admin|99999999999")
+    forged = staff._b64(b"boss|admin|abc123def456|99999999999")
 
     assert staff.read(f"{forged}.{signature}", SECRET, now) is None
     assert payload != forged
+
+
+# ---------- the stamp is what ends other sessions ----------
+
+
+def test_the_stamp_changes_when_the_password_changes(session):
+    row = make(session, "iyer", "leaf-cross-section")
+    before = accounts.credential_stamp(row)
+
+    changed = accounts.change_password(
+        session, f"{PREFIX}iyer", "leaf-cross-section", "stomata-2026"
+    )
+
+    assert accounts.credential_stamp(changed) != before
+
+
+def test_the_stamp_changes_when_an_admin_resets_it(session):
+    row = make(session, "iyer", "leaf-cross-section")
+    before = accounts.credential_stamp(row)
+
+    reset = accounts.reset_password(session, f"{PREFIX}iyer", "issued-by-the-office")
+
+    assert reset is not None
+    assert accounts.credential_stamp(reset) != before
+
+
+def test_the_stamp_is_steady_while_the_password_is(session):
+    row = make(session, "iyer", "leaf-cross-section")
+
+    accounts.set_disabled(session, f"{PREFIX}iyer", True, now_utc())
+    accounts.set_disabled(session, f"{PREFIX}iyer", False, now_utc())
+
+    assert accounts.credential_stamp(
+        accounts.find(session, f"{PREFIX}iyer")
+    ) == accounts.credential_stamp(row)
+
+
+def test_the_stamp_gives_nothing_away_about_the_password(session):
+    row = make(session, "iyer", "leaf-cross-section")
+
+    stamp = accounts.credential_stamp(row)
+
+    assert "leaf-cross-section" not in stamp
+    assert stamp not in row.password_hash
 
 
 @pytest.mark.parametrize("junk", ["", "nonsense", "a.b.c", "....", "!!!.???"])

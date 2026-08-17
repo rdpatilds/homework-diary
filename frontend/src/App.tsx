@@ -1,5 +1,6 @@
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 
+import AccountPage from "./pages/AccountPage";
 import AdminPage from "./pages/AdminPage";
 import StudentPage from "./pages/StudentPage";
 import TeacherPage from "./pages/TeacherPage";
@@ -12,7 +13,10 @@ const TODAY = new Intl.DateTimeFormat(undefined, {
 
 export default function App() {
   const path = useLocation().pathname;
-  const onStaffSide = path.startsWith("/teacher") || path.startsWith("/admin");
+  const onStaffSide =
+    path.startsWith("/teacher") ||
+    path.startsWith("/admin") ||
+    path.startsWith("/account");
   return (
     <div className="shell">
       <header className="topbar">
@@ -41,6 +45,7 @@ export default function App() {
         <Route path="/" element={<StudentPage />} />
         <Route path="/teacher" element={<TeacherPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/account" element={<AccountPage />} />
         <Route path="*" element={<StudentPage />} />
       </Routes>
 

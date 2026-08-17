@@ -192,3 +192,12 @@ class TeacherOut(Payload):
     display_name: str
     created_at: datetime
     disabled_at: datetime | None
+
+
+class ChangePassword(Payload):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+class ResetPassword(Payload):
+    password: str = Field(min_length=8, max_length=200)

@@ -13,9 +13,11 @@ from .config import settings
 from .db import SessionLocal, get_session, init_schema
 from .schemas import (
     AssignmentOut,
+    ChangePassword,
     HomeworkCreate,
     HomeworkOut,
     NewTeacher,
+    ResetPassword,
     SignIn,
     StaffSession,
     Student,
@@ -78,7 +80,28 @@ def _whoami(request: Request, session: Session) -> Identity | None:
     row = accounts.find(session, claim.username)
     if row is None or row.disabled_at is not None or row.role != claim.role.value:
         return None
+    # Minted against a password that has since changed, so this session is over.
+    if claim.stamp != accounts.credential_stamp(row):
+        return None
     return accounts.identify(row)
+
+
+def _issue_cookie(response: Response, row, now: datetime) -> None:
+    response.set_cookie(
+        COOKIE,
+        staff.mint(
+            accounts.identify(row),
+            accounts.credential_stamp(row),
+            settings.session_secret,
+            now,
+            timedelta(hours=settings.session_hours),
+        ),
+        max_age=settings.session_hours * 3600,
+        httponly=True,
+        samesite="strict",
+        secure=settings.cookie_secure,
+        path="/",
+    )
 
 
 def signed_in(
@@ -132,30 +155,66 @@ def sign_in_route(
     except ValueError:
         username = ""
 
-    who = (
+    row = (
         accounts.authenticate(session, username, payload.password) if username else None
     )
-    if who is None:
+    if row is None:
         throttle.record_failure(where, now)
         raise HTTPException(401, "That username and password do not match.")
 
     throttle.clear(where)
-    response.set_cookie(
-        COOKIE,
-        staff.mint(who, settings.session_secret, now, timedelta(hours=settings.session_hours)),
-        max_age=settings.session_hours * 3600,
-        httponly=True,
-        samesite="strict",
-        secure=settings.cookie_secure,
-        path="/",
-    )
-    return _as_session(who)
+    _issue_cookie(response, row, now)
+    return _as_session(accounts.identify(row))
 
 
 @app.delete("/api/staff/session", response_model=StaffSession)
 def sign_out(response: Response) -> StaffSession:
     response.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict")
     return StaffSession(signed_in=False)
+
+
+@app.post("/api/staff/password", response_model=StaffSession)
+def change_password(
+    payload: ChangePassword,
+    request: Request,
+    response: Response,
+    who: Identity = Depends(signed_in),
+    session: Session = Depends(get_session),
+) -> StaffSession:
+    now = datetime.now(timezone.utc)
+    where = f"password:{who.username}:{_caller(request)}"
+
+    if throttle.locked_out(where, now):
+        raise HTTPException(429, "Too many attempts. Wait a few minutes and try again.")
+
+    try:
+        row = accounts.change_password(
+            session, who.username, payload.current_password, payload.new_password
+        )
+    except accounts.WrongPassword:
+        throttle.record_failure(where, now)
+        raise HTTPException(401, "Your current password is not right.")
+    except accounts.SamePassword:
+        raise HTTPException(422, "The new password is the one you already have.")
+
+    throttle.clear(where)
+    # The change ended every session for this account, including this one.
+    # Hand back a fresh cookie so the person who made the change stays put.
+    _issue_cookie(response, row, now)
+    return _as_session(accounts.identify(row))
+
+
+@app.post("/api/admin/teachers/{username}/password", response_model=TeacherOut)
+def reset_teacher_password(
+    username: str,
+    payload: ResetPassword,
+    _: Identity = Depends(admin_only),
+    session: Session = Depends(get_session),
+) -> TeacherOut:
+    row = accounts.reset_password(session, Username.parse(username), payload.password)
+    if row is None:
+        raise HTTPException(404, "No such teacher")
+    return TeacherOut.model_validate(row)
 
 
 @app.get("/api/admin/teachers", response_model=list[TeacherOut])

@@ -28,6 +28,7 @@ and logs the username. It never touches that account again, so changing
 | Student landing page | http://localhost:8080 | None |
 | Teacher page | http://localhost:8080/teacher | Any staff account |
 | Admin page | http://localhost:8080/admin | Administrator only |
+| Change your password | http://localhost:8080/account | Any staff account |
 | API docs | http://localhost:8000/docs | |
 | Postgres | localhost:55432 | user/password/db all `schoolapp` |
 
@@ -43,11 +44,12 @@ python verify.py
 docker compose exec api python -m pytest tests -q
 ```
 
-`verify.py` runs 31 checks with three separate cookie jars, one per role. It
+`verify.py` runs 44 checks with a separate cookie jar per role and per device. It
 proves the staff API is shut to anonymous callers, that an admin can create a
 teacher and a teacher cannot, that work is credited to whoever signed in, that
-students need no sign-in, and that disabling a teacher ends the session they
-already hold. Pass `http://localhost:8080` to run the same checks through nginx.
+students need no sign-in, that disabling a teacher ends the session they already
+hold, and that changing a password ends every other session but not the one that
+made the change. Pass `http://localhost:8080` to run the same checks through nginx.
 
 The pytest suite runs against its own database, `schoolapp_test`, created on
 first use. It deletes rows freely, including every admin, so it must never point
@@ -109,6 +111,24 @@ already holding rather than waiting for it to expire.
 **Homework is credited to whoever is signed in.** `assignedBy` is not a field a
 client can send, so nobody can put another teacher's name on their work.
 
+## Passwords
+
+Anyone signed in changes their own at `/account`, proving the current one first
+so a stolen session alone cannot take an account over. An admin issues a new one
+to a teacher who has forgotten theirs, from the row on `/admin`.
+
+**Changing a password ends every other session for that account.** The token
+carries a short fingerprint of the stored hash, and every request compares it
+with the account's current one. A new password means a new hash, so tokens
+minted under the old one stop matching. Whoever made the change is handed a
+fresh cookie so they stay put; everyone else is signed out at once. An admin
+reset does the same to that teacher.
+
+The admin who bootstrapped from `ADMIN_PASSWORD` should change it at `/account`
+on first sign-in. After that the value in `.env` is inert, because the bootstrap
+only runs when there is no admin at all. If that password is ever lost, delete
+the admin row and restart the API to bootstrap a fresh one.
+
 **Identities are normalised once.** `ClassSection.parse` and `StudentKey.parse`
 trim, collapse inner whitespace, and uppercase. A student typing `8` / `a` /
 ` 24 ` and a teacher typing ` 8 ` / `A` land on the same cohort and the same
@@ -150,8 +170,9 @@ datetime posted directly to the API is read as UTC.
 - The sign-in throttle counts failures per IP in memory. It resets on restart
   and does not span replicas, so it slows guessing rather than stopping it. Put
   a real rate limit at the proxy before this faces the internet.
-- No password change or reset for teachers. An admin can disable an account and
-  create a replacement, which is the whole recovery story today.
+- No self-service reset. A teacher who forgets their password needs an admin to
+  issue a new one, and an admin who forgets theirs needs database access. There
+  is no email on file to send a link to.
 - `COOKIE_SECURE` is false by default so it works over plain HTTP locally. Set
   it to true the moment this is behind TLS, or session cookies travel in clear.
 - No roster, so a roll number is whatever the student types. `07` and `7` are

@@ -27,9 +27,13 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def mint(identity: Identity, secret: str, now: datetime, ttl: timedelta) -> str:
+def mint(
+    identity: Identity, stamp: str, secret: str, now: datetime, ttl: timedelta
+) -> str:
     expires_at = int((now + ttl).timestamp())
-    payload = f"{identity.username}|{identity.role.value}|{expires_at}".encode()
+    payload = (
+        f"{identity.username}|{identity.role.value}|{stamp}|{expires_at}".encode()
+    )
     signature = hmac.new(_key(secret), payload, hashlib.sha256).digest()
     return f"{_b64(payload)}.{_b64(signature)}"
 
@@ -38,6 +42,9 @@ def mint(identity: Identity, secret: str, now: datetime, ttl: timedelta) -> str:
 class Claim:
     username: str
     role: Role
+    # Fingerprint of the password hash this token was minted against. The
+    # caller compares it with the account's current one.
+    stamp: str
 
 
 def read(token: str, secret: str, now: datetime) -> Claim | None:
@@ -57,10 +64,10 @@ def read(token: str, secret: str, now: datetime) -> Claim | None:
         return None
 
     try:
-        username, role, expires_at = payload.decode().split("|")
+        username, role, stamp, expires_at = payload.decode().split("|")
         if now.timestamp() >= int(expires_at):
             return None
-        return Claim(username, Role(role))
+        return Claim(username, Role(role), stamp)
     except ValueError:
         return None
 

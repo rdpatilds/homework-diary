@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { Link } from "react-router-dom";
+
 import {
   createTeacher,
   fetchTeachers,
+  resetTeacherPassword,
   setTeacherDisabled,
   signOut,
 } from "../api/client";
@@ -41,6 +44,11 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Which teacher's reset row is open, and what has been typed into it. */
+  const [resetting, setResetting] = useState<{ username: string; password: string } | null>(
+    null,
+  );
+  const [reset, setReset] = useState<{ username: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -85,6 +93,24 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
       setStatus({
         kind: "failed",
         message: error instanceof Error ? error.message : "That did not save.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitReset(event: FormEvent) {
+    event.preventDefault();
+    if (!resetting || resetting.password.length < 8) return;
+    setBusy(resetting.username);
+    try {
+      await resetTeacherPassword(resetting.username, resetting.password);
+      setReset({ username: resetting.username });
+      setResetting(null);
+    } catch (error) {
+      setStatus({
+        kind: "failed",
+        message: error instanceof Error ? error.message : "Could not reset it.",
       });
     } finally {
       setBusy(null);
@@ -143,9 +169,15 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
         <form className="panel" onSubmit={submit}>
           <div className="panel-head">
             <h2>New teacher</h2>
-            <button type="button" className="link" onClick={() => void signOut().then(() => location.reload())}>
-              Sign out
-            </button>
+            <span style={{ display: "flex", gap: "8px" }}>
+              <Link className="link" to="/account">
+                My password
+              </Link>
+              <button type="button" className="link"
+                onClick={() => void signOut().then(() => location.reload())}>
+                Sign out
+              </button>
+            </span>
           </div>
           <div className="form-body">
             <Field label="Full name" value={draft.displayName}
@@ -212,11 +244,52 @@ function Console({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
                     <span className={off ? "chip crit" : "chip low"}>
                       {off ? "no access" : "can set work"}
                     </span>
-                    <button type="button" className="link"
-                      disabled={busy === teacher.username}
-                      onClick={() => void toggle(teacher)}>
-                      {busy === teacher.username ? "Saving" : off ? "Enable" : "Disable"}
-                    </button>
+                    <span className="row-actions">
+                      <button type="button" className="link"
+                        disabled={busy === teacher.username}
+                        onClick={() =>
+                          setResetting(
+                            resetting?.username === teacher.username
+                              ? null
+                              : { username: teacher.username, password: "" },
+                          )
+                        }>
+                        {resetting?.username === teacher.username ? "Cancel" : "Reset"}
+                      </button>
+                      <button type="button" className="link"
+                        disabled={busy === teacher.username}
+                        onClick={() => void toggle(teacher)}>
+                        {busy === teacher.username ? "Saving" : off ? "Enable" : "Disable"}
+                      </button>
+                    </span>
+
+                    {resetting?.username === teacher.username ? (
+                      <form className="row-inline" onSubmit={submitReset}>
+                        <input type="password" autoFocus minLength={8}
+                          placeholder={`New password for ${teacher.username}`}
+                          value={resetting.password}
+                          onChange={(event) =>
+                            setResetting({
+                              username: teacher.username,
+                              password: event.target.value,
+                            })
+                          } />
+                        <button type="submit" className="primary"
+                          disabled={resetting.password.length < 8}>
+                          Set it
+                        </button>
+                        <span className="hint">
+                          Ends their session. Tell them in person.
+                        </span>
+                      </form>
+                    ) : null}
+
+                    {reset?.username === teacher.username ? (
+                      <p className="row-inline note" role="status">
+                        New password set for {teacher.username}. They have been signed
+                        out.
+                      </p>
+                    ) : null}
                   </li>
                 );
               })}

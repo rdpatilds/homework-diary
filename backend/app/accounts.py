@@ -85,15 +85,26 @@ def identify(row: StaffAccount) -> Identity:
     return Identity(row.username, row.display_name, Role(row.role))
 
 
+def credential_stamp(row: StaffAccount) -> str:
+    """A short fingerprint of the stored hash, carried inside the session token.
+
+    Changing a password changes the hash, so every token minted under the old
+    one stops matching and those sessions end. That is what makes a password
+    change kick out whoever else was holding a session. It is a digest of a
+    digest, so it gives nothing away about the password."""
+    return hashlib.sha256(row.password_hash.encode()).hexdigest()[:12]
+
+
 def find(session: Session, username: str) -> StaffAccount | None:
     return session.scalar(
         select(StaffAccount).where(StaffAccount.username == username)
     )
 
 
-def authenticate(session: Session, username: str, password: str) -> Identity | None:
-    """None covers unknown, disabled and wrong password alike, so nothing about
-    which one it was leaks back to the caller."""
+def authenticate(session: Session, username: str, password: str) -> StaffAccount | None:
+    """The account row, so the caller can take both an identity and a credential
+    stamp from it. None covers unknown, disabled and wrong password alike, so
+    nothing about which one it was leaks back."""
     row = find(session, username)
     if row is None:
         # Spend the same time as a real check so absence is not timeable.
@@ -103,7 +114,7 @@ def authenticate(session: Session, username: str, password: str) -> Identity | N
         return None
     if not password_matches(password, row.password_hash):
         return None
-    return identify(row)
+    return row
 
 
 def create(
@@ -121,6 +132,44 @@ def create(
         role=role.value,
     )
     session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+class WrongPassword(Exception):
+    """The current password did not match, so nothing was changed."""
+
+
+class SamePassword(Exception):
+    """The new password is the old one."""
+
+
+def change_password(
+    session: Session, username: str, current: str, new: str
+) -> StaffAccount:
+    """Self service. Proves you know the current password first, so a stolen
+    session alone cannot take an account over."""
+    row = find(session, username)
+    if row is None or row.disabled_at is not None:
+        raise WrongPassword
+    if not password_matches(current, row.password_hash):
+        raise WrongPassword
+    if password_matches(new, row.password_hash):
+        raise SamePassword
+    row.password_hash = hash_password(new)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def reset_password(session: Session, username: str, new: str) -> StaffAccount | None:
+    """Admin path, for a teacher who has forgotten theirs. No current password,
+    because the admin cannot know it. Ends that teacher's sessions."""
+    row = find(session, username)
+    if row is None or row.role != Role.TEACHER.value:
+        return None
+    row.password_hash = hash_password(new)
     session.commit()
     session.refresh(row)
     return row

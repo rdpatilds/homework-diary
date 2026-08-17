@@ -232,7 +232,72 @@ status, body = blocked("POST", "/api/staff/session",
                        {"username": TEACHER_USER, "password": TEACHER_PASS})
 check("and they can sign back in", status == 200, f"{status} {body}")
 
+print("\n-- changing a password --")
+
+NEW_PASS = "verify-teacher-new-password"
+desk = Caller("teacher-desk")
+phone = Caller("teacher-phone")
+
+for caller in (desk, phone):
+    caller("POST", "/api/staff/session",
+           {"username": TEACHER_USER, "password": TEACHER_PASS})
+
+status, body = desk("POST", "/api/staff/password",
+                    {"currentPassword": "not-it", "newPassword": NEW_PASS})
+check("a wrong current password is refused", status == 401, f"{status} {body}")
+
+status, body = desk("POST", "/api/staff/password",
+                    {"currentPassword": TEACHER_PASS, "newPassword": TEACHER_PASS})
+check("the new password must differ from the old", status == 422, f"{status} {body}")
+
+status, body = desk("POST", "/api/staff/password",
+                    {"currentPassword": TEACHER_PASS, "newPassword": "short"})
+check("a short new password is refused", status == 422, f"{status} {body}")
+
+status, body = desk("POST", "/api/staff/password",
+                    {"currentPassword": TEACHER_PASS, "newPassword": NEW_PASS})
+check("the password changes", status == 200 and body.get("signedIn") is True,
+      f"{status} {body}")
+
+status, body = desk("GET", "/api/homework?className=" + CLASS + "&section=" + SECTION)
+check("whoever changed it stays signed in", status == 200, f"{status} {body}")
+
+status, body = phone("GET", "/api/homework?className=" + CLASS + "&section=" + SECTION)
+check("every other session is ended", status == 401, f"{status} {body}")
+
+stale = Caller("stale")
+status, body = stale("POST", "/api/staff/session",
+                     {"username": TEACHER_USER, "password": TEACHER_PASS})
+check("the old password no longer works", status == 401, f"{status} {body}")
+
+status, body = stale("POST", "/api/staff/session",
+                     {"username": TEACHER_USER, "password": NEW_PASS})
+check("the new password does", status == 200, f"{status} {body}")
+
+print("\n-- an admin resets a forgotten password --")
+
+status, body = admin("POST", f"/api/admin/teachers/{TEACHER_USER}/password",
+                     {"password": TEACHER_PASS})
+check("the admin can reset a teacher", status == 200, f"{status} {body}")
+
+status, body = stale("GET", f"/api/homework?className={CLASS}&section={SECTION}")
+check("the reset ends that teacher's session", status == 401, f"{status} {body}")
+
+status, body = stale("POST", "/api/staff/session",
+                     {"username": TEACHER_USER, "password": TEACHER_PASS})
+check("they sign in with what the admin issued", status == 200, f"{status} {body}")
+
+status, body = desk("POST", f"/api/admin/teachers/{TEACHER_USER}/password",
+                    {"password": "teacher-should-not-reach-this"})
+check("a teacher cannot reset anyone", status in (401, 403), f"{status} {body}")
+
+status, body = admin("POST", f"/api/admin/teachers/{ADMIN_USER}/password",
+                     {"password": "admins-are-not-resettable-here"})
+check("an admin cannot be reset through the teacher path", status == 404,
+      f"{status} {body}")
+
 print("\n-- signing out --")
+teacher = stale
 
 status, body = teacher("DELETE", "/api/staff/session")
 check("signing out reports signed out",

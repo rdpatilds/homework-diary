@@ -109,6 +109,26 @@ export function createTeacher(teacher: NewTeacher): Promise<Teacher> {
   });
 }
 
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<StaffSession> {
+  return request("/api/staff/password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function resetTeacherPassword(
+  username: string,
+  password: string,
+): Promise<Teacher> {
+  return request(`/api/admin/teachers/${encodeURIComponent(username)}/password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
 export function setTeacherDisabled(
   username: string,
   disabled: boolean,

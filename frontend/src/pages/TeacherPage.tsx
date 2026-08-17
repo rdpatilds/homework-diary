@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { createHomework, fetchClassHomework, signOut } from "../api/client";
 import type { Homework, StaffSession } from "../api/types";
@@ -143,10 +144,15 @@ function Desk({ who }: { who: Extract<StaffSession, { signedIn: true }> }) {
         <form className="panel" onSubmit={submit}>
           <div className="panel-head">
             <h2>New homework</h2>
-            <button type="button" className="link"
-              onClick={() => void signOut().then(() => location.reload())}>
-              Sign out
-            </button>
+            <span className="row-actions">
+              <Link className="link" to="/account">
+                My password
+              </Link>
+              <button type="button" className="link"
+                onClick={() => void signOut().then(() => location.reload())}>
+                Sign out
+              </button>
+            </span>
           </div>
           <div className="form-body">
             <Field label="Title" value={draft.title} onChange={set("title")}

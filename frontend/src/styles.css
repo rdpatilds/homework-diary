@@ -645,6 +645,51 @@ button.primary:disabled {
 .chip.med { color: var(--med); background: rgba(234, 179, 8, 0.12); }
 .chip.low { color: var(--low); background: rgba(34, 197, 94, 0.12); }
 
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* An action that needs an input opens inside its own row rather than a dialog. */
+.row-inline {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--edge);
+}
+
+.row-inline input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  background: var(--sunken);
+  border: 1px solid var(--edge-input);
+  border-radius: var(--radius-sm, 8px);
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.row-inline input:focus {
+  outline: none;
+  border-color: rgba(0, 163, 224, 0.5);
+}
+
+.row-inline button {
+  padding: 9px 18px;
+  font-size: 13px;
+}
+
+.row-inline.note {
+  font-size: 13px;
+  color: var(--low);
+  border-top-color: rgba(34, 197, 94, 0.25);
+}
+
 .blank {
   padding: 40px 20px;
   text-align: center;
