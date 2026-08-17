@@ -45,11 +45,16 @@ docker compose exec api python -m pytest tests -q
 ```
 
 `verify.py` runs 63 checks with a separate cookie jar per role and per device. It
-proves the staff API is shut to anonymous callers, that an admin can create a
-teacher and a teacher cannot, that work is credited to whoever signed in, that
-students need no sign-in, that disabling a teacher ends the session they already
-hold, and that changing a password ends every other session but not the one that
-made the change. Pass `http://localhost:8080` to run the same checks through nginx.
+proves the staff API is shut to anonymous callers, that an admin can create
+teachers and other admins while a teacher cannot, that work is credited to
+whoever signed in, that students need no sign-in, that disabling an account ends
+the session it already holds, that changing a password ends every other session
+but not the one that made the change, and that the lockout guards hold. Pass
+`http://localhost:8080` to run the same checks through nginx.
+
+It is repeatable. Each account's password is converged before use, and the
+admin-resets-admin case runs between two throwaway admins, so a run that dies
+part way never leaves you locked out of the bootstrap account.
 
 The pytest suite runs against its own database, `schoolapp_test`, created on
 first use. It deletes rows freely, including every admin, so it must never point
@@ -81,8 +86,8 @@ backend/app
 frontend/src
   api/           fetch wrapper and DTO types
   deadline.ts    countdown and timezone conversion, pure
-  components/    StaffGate wraps both staff pages
-  pages/         StudentPage, TeacherPage, AdminPage
+  components/    StaffGate wraps every staff page
+  pages/         StudentPage, TeacherPage, AdminPage, AccountPage
 ```
 
 ## Who can do what
